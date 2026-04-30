@@ -1,36 +1,88 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SCENTDEX V5 — Public DEX UI
 
-## Getting Started
+Frontend for [dex.scenttoken.com](https://dex.scenttoken.com/), the peer-to-peer limit-order exchange for Scent Token.
 
-First, run the development server:
+Operated by **Universal Scent Technology** (Singapore).
+
+## Tech stack
+
+- **Next.js 16** (App Router, Turbopack)
+- **React 19**
+- **TypeScript 5**
+- **Tailwind CSS 4** (CSS-first theme via `@theme`)
+- **wagmi 2** + **viem 2** (EVM client)
+- **RainbowKit 2** (wallet connection UI)
+- **@tanstack/react-query 5** (state for on-chain reads)
+
+## Local development
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env.local        # add your WalletConnect projectId
+npm install
+npm run dev                        # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+A WalletConnect projectId is optional in development — without one, injected wallets (MetaMask, Rabby, Coinbase) still work; WalletConnect-based wallets are degraded.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Project layout
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+app/
+├── components/
+│   ├── BottomTabs.tsx     My Orders / History / Permit2 — bottom panel
+│   ├── Header.tsx         Logo + nav + wallet connect (RainbowKit)
+│   ├── OrderBook.tsx      Aggregated bids/asks with depth bars
+│   ├── PairTabs.tsx       SCENT/JPYC, SCENT/USDT switcher
+│   ├── PlaceOrder.tsx     Buy/Sell + price/amount/expiry + Sign Order
+│   ├── RecentTrades.tsx   Live trade ticker
+│   └── StatsBar.tsx       Price + 24h volume/high/low + maker fee
+├── globals.css            Tailwind v4 theme (dark + buy/sell/accent colours)
+├── layout.tsx             Providers wrapper, fonts, metadata
+├── page.tsx               Trade page (default)
+└── providers.tsx          Wagmi + QueryClient + RainbowKit
 
-## Learn More
+lib/
+├── contracts.ts           SCENTDEX V5 contract addresses (per chain)
+├── tokens.ts              SCENT / JPYC / USDT definitions, pair list
+└── wagmi.ts               Wagmi config (Mainnet + Sepolia)
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Implementation phase
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+This repo is in **Phase 1-2 (scaffolding + structural placeholder)**. Components render with **dummy data** so the layout and design system are reviewable end-to-end.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Phase | Scope | Status |
+|---|---|---|
+| 1 | Next.js scaffolding, dark theme, fonts | ✅ Done |
+| 2 | Wallet connection (RainbowKit), Header, Pair tabs | ✅ Done |
+| 3 | Order book read from indexer + Recent Trades subscription | ⏳ Next |
+| 4 | Permit2 approve flow (read allowance, approve tx) | ⏳ |
+| 5 | Place Order — EIP-712 signing + phishing-detection modal | ⏳ |
+| 6 | Fill order — Permit2 forward + fillOrder tx | ⏳ |
+| 7 | My Orders / Cancel / Bulk cancel | ⏳ |
+| 8 | Indexer backend (Vercel Postgres + cron) | ⏳ |
+| 9 | Polish: error/loading/empty states, edge-case handling | ⏳ |
 
-## Deploy on Vercel
+The functional requirements driving each phase are documented internally at `data/ust/incidents/2026-04-16_scentdex_vulnerability/specs/V5_dex_ui_functional_requirements.md`.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Audit posture
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The contract this UI talks to is at [`ust-scent/scentdex-v5`](https://github.com/ust-scent/scentdex-v5). Current revision **r6**:
+
+- Internal red team + 4 rounds `/ultrareview` (round 4 returned 0 findings)
+- 5-tools static analysis (Slither, Mythril, Aderyn, Wake, 4naly3er) all clean on r1 baseline
+- External formal audit: **pending** — to be scheduled when budget allows
+
+## Deployment
+
+- **Host**: Vercel (Hobby plan)
+- **Production URL**: `dex.scenttoken.com` (DNS at お名前.com, CNAME → Vercel)
+- **Pipeline**: every push to `main` auto-deploys
+
+## Reporting issues
+
+Security disclosures and general inquiries: **cs@scenttoken.com**
+
+## License
+
+[MIT](./LICENSE)

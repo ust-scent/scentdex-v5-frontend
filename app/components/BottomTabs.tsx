@@ -1,0 +1,290 @@
+"use client";
+
+import { TOKENS } from "@/lib/tokens";
+import { useState } from "react";
+
+type Tab = "orders" | "history" | "permit2";
+
+export function BottomTabs() {
+  const [tab, setTab] = useState<Tab>("orders");
+
+  return (
+    <section className="bg-bg-soft border border-line rounded-lg overflow-hidden">
+      <div className="flex items-center gap-1 px-3 pt-3 border-b border-line">
+        <TabBtn active={tab === "orders"} onClick={() => setTab("orders")} count={4}>
+          My Orders
+        </TabBtn>
+        <TabBtn active={tab === "history"} onClick={() => setTab("history")} count={6}>
+          History
+        </TabBtn>
+        <TabBtn active={tab === "permit2"} onClick={() => setTab("permit2")}>
+          Permit2
+        </TabBtn>
+      </div>
+
+      {tab === "orders" ? <MyOrders /> : null}
+      {tab === "history" ? <History /> : null}
+      {tab === "permit2" ? <Permit2 /> : null}
+    </section>
+  );
+}
+
+function TabBtn({
+  children,
+  active,
+  onClick,
+  count,
+}: {
+  children: React.ReactNode;
+  active: boolean;
+  onClick: () => void;
+  count?: number;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-1.5 px-4 py-2.5 -mb-px border-b-2 transition-colors text-[13px] uppercase tracking-[0.1em] ${
+        active
+          ? "border-accent text-fg"
+          : "border-transparent text-fg-dim hover:text-fg"
+      }`}
+    >
+      {children}
+      {count !== undefined ? (
+        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.05] tabular-nums">
+          {count}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+function MyOrders() {
+  const orders = [
+    { pair: "SCENT/JPYC", side: "sell", price: "12.5500", amount: 800, filled: 30, status: "PartiallyFilled" },
+    { pair: "SCENT/JPYC", side: "sell", price: "12.6200", amount: 1200, filled: 0, status: "Open" },
+    { pair: "SCENT/JPYC", side: "buy", price: "12.3000", amount: 500, filled: 0, status: "Open" },
+    { pair: "SCENT/USDT", side: "sell", price: "0.0840", amount: 2500, filled: 0, status: "Open" },
+  ];
+
+  return (
+    <div>
+      <div className="px-3 py-2 flex items-center justify-between border-b border-line">
+        <div className="flex items-center gap-1">
+          <SubTab active>Active (4)</SubTab>
+          <SubTab>Historical (4)</SubTab>
+        </div>
+        <button className="text-[12px] px-2.5 py-1 rounded border border-line text-fg-dim hover:text-fg hover:border-line-strong">
+          🗑 Bulk cancel
+        </button>
+      </div>
+
+      <div className="grid grid-cols-[1fr_80px_120px_1fr_120px_80px] px-4 py-2 text-[10px] uppercase tracking-[0.14em] text-fg-faint border-b border-line">
+        <div>Pair</div>
+        <div>Side</div>
+        <div>Price</div>
+        <div className="text-right">Amount / Filled</div>
+        <div className="text-center">Status</div>
+        <div className="text-right">Action</div>
+      </div>
+
+      {orders.map((o, i) => (
+        <div
+          key={i}
+          className="grid grid-cols-[1fr_80px_120px_1fr_120px_80px] px-4 py-3 text-[13px] hover:bg-white/[0.02] border-b border-line last:border-b-0 items-center"
+        >
+          <div className="font-medium">{o.pair}</div>
+          <div className={o.side === "buy" ? "text-buy" : "text-sell"}>
+            {o.side.toUpperCase()}
+          </div>
+          <div className="font-mono tnum">{o.price}</div>
+          <div className="text-right tnum flex items-center justify-end gap-3">
+            <span className="font-mono">{o.amount.toLocaleString()}</span>
+            <div className="w-16 h-1 rounded-full bg-white/[0.05] overflow-hidden">
+              <div
+                className="h-full bg-accent"
+                style={{ width: `${o.filled}%` }}
+              />
+            </div>
+            <span className="text-fg-faint w-8 text-left">{o.filled}%</span>
+          </div>
+          <div className="text-center">
+            <StatusBadge status={o.status} />
+          </div>
+          <div className="text-right">
+            <button className="text-[12px] px-2 py-1 rounded text-fg-dim hover:text-fg hover:bg-white/[0.05]">
+              Cancel
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function History() {
+  const trades = [
+    { time: "2026-05-01 10:42", pair: "SCENT/JPYC", side: "sell", amount: 240, price: "12.5500", role: "Maker", cp: "0x7a4b…2e91", fee: "24 JPYC" },
+    { time: "2026-05-01 09:18", pair: "SCENT/JPYC", side: "buy", amount: 180, price: "12.4200", role: "Taker", cp: "0xc1f0…9d2a", fee: "18 JPYC" },
+    { time: "2026-04-30 22:05", pair: "SCENT/JPYC", side: "sell", amount: 600, price: "12.4000", role: "Maker", cp: "0x2c8a…51f4", fee: "60 JPYC" },
+    { time: "2026-04-30 16:51", pair: "SCENT/USDT", side: "sell", amount: 1100, price: "0.0810", role: "Maker", cp: "0xe55d…3a02", fee: "8.91 USDT" },
+    { time: "2026-04-30 11:33", pair: "SCENT/JPYC", side: "buy", amount: 90, price: "12.5100", role: "Taker", cp: "0x09bf…cc11", fee: "11 JPYC" },
+    { time: "2026-04-29 19:12", pair: "SCENT/JPYC", side: "sell", amount: 320, price: "12.2800", role: "Maker", cp: "0x4f12…b7e3", fee: "32 JPYC" },
+  ];
+
+  return (
+    <div>
+      <div className="grid grid-cols-[160px_140px_70px_1fr_120px_80px_1fr_100px] px-4 py-2 text-[10px] uppercase tracking-[0.14em] text-fg-faint border-b border-line">
+        <div>Time</div>
+        <div>Pair</div>
+        <div>Side</div>
+        <div className="text-right">Amount</div>
+        <div className="text-right">Price</div>
+        <div className="text-fg-faint">Role</div>
+        <div className="text-right">Counter-party</div>
+        <div className="text-right">Protocol Fee</div>
+      </div>
+
+      {trades.map((t, i) => (
+        <div
+          key={i}
+          className="grid grid-cols-[160px_140px_70px_1fr_120px_80px_1fr_100px] px-4 py-3 text-[13px] font-mono hover:bg-white/[0.02] border-b border-line last:border-b-0 items-center"
+        >
+          <div className="text-fg-dim tnum">{t.time}</div>
+          <div className="font-sans font-medium">{t.pair}</div>
+          <div className={t.side === "buy" ? "text-buy" : "text-sell"}>
+            {t.side.toUpperCase()}
+          </div>
+          <div className="text-right tnum">{t.amount.toLocaleString()}</div>
+          <div className="text-right tnum">{t.price}</div>
+          <div className="text-fg-faint">{t.role}</div>
+          <div className="text-right text-fg-dim">{t.cp}</div>
+          <div className="text-right tnum">{t.fee}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Permit2() {
+  return (
+    <div className="p-4">
+      <div className="px-4 py-3 mb-4 rounded-md bg-accent-soft border border-accent/30 text-[13px] flex items-start gap-2">
+        <span aria-hidden="true">🛡</span>
+        <span>
+          Permit2 lets SCENTDEX execute your signed orders without a separate{" "}
+          <code className="font-mono text-fg-dim">approve</code> tx per token.
+          Re-approve any time.{" "}
+          <a className="text-accent underline-offset-2 hover:underline" href="/permit2">
+            Learn more →
+          </a>
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <Permit2Card token="SCENT" used="13.28K" cap="50.00K" expiresIn={24} status="active" />
+        <Permit2Card token="JPYC" used="482.33K" cap="2.00M" expiresIn={24} status="active" />
+        <Permit2Card token="USDT" status="not-approved" />
+      </div>
+    </div>
+  );
+}
+
+function Permit2Card({
+  token,
+  used,
+  cap,
+  expiresIn,
+  status,
+}: {
+  token: string;
+  used?: string;
+  cap?: string;
+  expiresIn?: number;
+  status: "active" | "not-approved";
+}) {
+  const t = TOKENS.find((x) => x.symbol === token);
+  return (
+    <div className="border border-line rounded-md p-4 bg-white/[0.015]">
+      <div className="flex items-center gap-3 mb-3">
+        <div
+          className={`w-8 h-8 rounded-full flex items-center justify-center text-bg font-bold text-[12px] ${t?.accentClass ?? "bg-fg-dim"}`}
+        >
+          {token.charAt(0)}
+        </div>
+        <div className="font-medium text-[14px] flex-1">{token}</div>
+        {status === "active" ? (
+          <span className="text-[11px] px-2 py-0.5 rounded-full bg-buy/15 text-buy">
+            Active
+          </span>
+        ) : (
+          <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/[0.05] text-fg-dim">
+            Not approved
+          </span>
+        )}
+      </div>
+
+      {status === "active" ? (
+        <>
+          <div className="mb-2 flex items-baseline justify-between text-[11px]">
+            <span className="text-fg-faint uppercase tracking-[0.14em]">Used</span>
+            <span className="font-mono tnum text-fg-dim">
+              {used} / {cap}
+            </span>
+          </div>
+          <div className="h-1.5 rounded-full bg-white/[0.05] mb-3 overflow-hidden">
+            <div className="h-full bg-accent" style={{ width: "30%" }} />
+          </div>
+          <div className="flex items-center justify-between text-[12px]">
+            <span className="text-fg-dim">Expires in {expiresIn} days</span>
+            <button className="px-3 py-1 rounded text-fg-dim border border-line hover:text-fg hover:border-line-strong">
+              Re-approve
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="text-[12px] text-fg-dim mb-3 leading-relaxed">
+            Approve once to start trading {token}. You'll sign a Permit2
+            typed-data message.
+          </p>
+          <button className="w-full py-2 rounded-md bg-accent text-bg font-medium text-[13px]">
+            Approve {token}
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+function SubTab({
+  children,
+  active,
+}: {
+  children: React.ReactNode;
+  active?: boolean;
+}) {
+  return (
+    <button
+      className={`px-3 py-1 rounded-md text-[12px] ${
+        active ? "bg-white/[0.06] text-fg" : "text-fg-dim hover:text-fg"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const cls =
+    status === "Open"
+      ? "bg-buy/15 text-buy"
+      : status === "PartiallyFilled"
+      ? "bg-accent-soft text-accent"
+      : "bg-white/[0.05] text-fg-dim";
+  return (
+    <span className={`text-[11px] px-2 py-0.5 rounded font-mono ${cls}`}>
+      {status}
+    </span>
+  );
+}
