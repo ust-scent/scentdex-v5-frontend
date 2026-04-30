@@ -69,7 +69,7 @@ function MyOrders() {
 
   return (
     <div>
-      <div className="px-3 py-2 flex items-center justify-between border-b border-line">
+      <div className="px-3 py-2 flex flex-wrap items-center justify-between gap-2 border-b border-line">
         <div className="flex items-center gap-1">
           <SubTab active>Active (4)</SubTab>
           <SubTab>Historical (4)</SubTab>
@@ -79,7 +79,8 @@ function MyOrders() {
         </button>
       </div>
 
-      <div className="grid grid-cols-[1fr_80px_120px_1fr_120px_80px] px-4 py-2 text-[10px] uppercase tracking-[0.14em] text-fg-faint border-b border-line">
+      {/* Desktop table header */}
+      <div className="hidden md:grid grid-cols-[1fr_80px_120px_1fr_120px_80px] px-4 py-2 text-[10px] uppercase tracking-[0.14em] text-fg-faint border-b border-line">
         <div>Pair</div>
         <div>Side</div>
         <div>Price</div>
@@ -91,28 +92,68 @@ function MyOrders() {
       {orders.map((o, i) => (
         <div
           key={i}
-          className="grid grid-cols-[1fr_80px_120px_1fr_120px_80px] px-4 py-3 text-[13px] hover:bg-white/[0.02] border-b border-line last:border-b-0 items-center"
+          className="border-b border-line last:border-b-0 hover:bg-white/[0.02]"
         >
-          <div className="font-medium">{o.pair}</div>
-          <div className={o.side === "buy" ? "text-buy" : "text-sell"}>
-            {o.side.toUpperCase()}
-          </div>
-          <div className="font-mono tnum">{o.price}</div>
-          <div className="text-right tnum flex items-center justify-end gap-3">
-            <span className="font-mono">{o.amount.toLocaleString()}</span>
-            <div className="w-16 h-1 rounded-full bg-white/[0.05] overflow-hidden">
-              <div
-                className="h-full bg-accent"
-                style={{ width: `${o.filled}%` }}
-              />
+          {/* Desktop row */}
+          <div className="hidden md:grid grid-cols-[1fr_80px_120px_1fr_120px_80px] px-4 py-3 text-[13px] items-center">
+            <div className="font-medium">{o.pair}</div>
+            <div className={o.side === "buy" ? "text-buy" : "text-sell"}>
+              {o.side.toUpperCase()}
             </div>
-            <span className="text-fg-faint w-8 text-left">{o.filled}%</span>
+            <div className="font-mono tnum">{o.price}</div>
+            <div className="text-right tnum flex items-center justify-end gap-3">
+              <span className="font-mono">{o.amount.toLocaleString()}</span>
+              <div className="w-16 h-1 rounded-full bg-white/[0.05] overflow-hidden">
+                <div className="h-full bg-accent" style={{ width: `${o.filled}%` }} />
+              </div>
+              <span className="text-fg-faint w-8 text-left">{o.filled}%</span>
+            </div>
+            <div className="text-center">
+              <StatusBadge status={o.status} />
+            </div>
+            <div className="text-right">
+              <button className="text-[12px] px-2 py-1 rounded text-fg-dim hover:text-fg hover:bg-white/[0.05]">
+                Cancel
+              </button>
+            </div>
           </div>
-          <div className="text-center">
-            <StatusBadge status={o.status} />
-          </div>
-          <div className="text-right">
-            <button className="text-[12px] px-2 py-1 rounded text-fg-dim hover:text-fg hover:bg-white/[0.05]">
+
+          {/* Mobile card */}
+          <div className="md:hidden px-4 py-3">
+            <div className="flex items-center justify-between mb-2.5">
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-[14px]">{o.pair}</span>
+                <span
+                  className={`text-[11px] font-medium ${
+                    o.side === "buy" ? "text-buy" : "text-sell"
+                  }`}
+                >
+                  {o.side.toUpperCase()}
+                </span>
+              </div>
+              <StatusBadge status={o.status} />
+            </div>
+            <div className="grid grid-cols-2 gap-y-1.5 text-[13px] mb-3">
+              <span className="text-fg-faint">Price</span>
+              <span className="text-right font-mono tnum">{o.price}</span>
+              <span className="text-fg-faint">Amount</span>
+              <span className="text-right font-mono tnum">
+                {o.amount.toLocaleString()}
+              </span>
+              <span className="text-fg-faint">Filled</span>
+              <span className="text-right">
+                <span className="inline-flex items-center gap-2">
+                  <span className="w-14 h-1 rounded-full bg-white/[0.05] overflow-hidden inline-block">
+                    <span
+                      className="block h-full bg-accent"
+                      style={{ width: `${o.filled}%` }}
+                    />
+                  </span>
+                  <span className="font-mono tnum">{o.filled}%</span>
+                </span>
+              </span>
+            </div>
+            <button className="w-full py-2 rounded-md bg-white/[0.04] text-[13px] text-fg-dim hover:text-fg hover:bg-white/[0.08]">
               Cancel
             </button>
           </div>
@@ -134,7 +175,8 @@ function History() {
 
   return (
     <div>
-      <div className="grid grid-cols-[160px_140px_70px_1fr_120px_80px_1fr_100px] px-4 py-2 text-[10px] uppercase tracking-[0.14em] text-fg-faint border-b border-line">
+      {/* Desktop table header */}
+      <div className="hidden md:grid grid-cols-[160px_140px_70px_1fr_120px_80px_1fr_100px] px-4 py-2 text-[10px] uppercase tracking-[0.14em] text-fg-faint border-b border-line">
         <div>Time</div>
         <div>Pair</div>
         <div>Side</div>
@@ -148,18 +190,55 @@ function History() {
       {trades.map((t, i) => (
         <div
           key={i}
-          className="grid grid-cols-[160px_140px_70px_1fr_120px_80px_1fr_100px] px-4 py-3 text-[13px] font-mono hover:bg-white/[0.02] border-b border-line last:border-b-0 items-center"
+          className="border-b border-line last:border-b-0 hover:bg-white/[0.02]"
         >
-          <div className="text-fg-dim tnum">{t.time}</div>
-          <div className="font-sans font-medium">{t.pair}</div>
-          <div className={t.side === "buy" ? "text-buy" : "text-sell"}>
-            {t.side.toUpperCase()}
+          {/* Desktop row */}
+          <div className="hidden md:grid grid-cols-[160px_140px_70px_1fr_120px_80px_1fr_100px] px-4 py-3 text-[13px] font-mono items-center">
+            <div className="text-fg-dim tnum">{t.time}</div>
+            <div className="font-sans font-medium">{t.pair}</div>
+            <div className={t.side === "buy" ? "text-buy" : "text-sell"}>
+              {t.side.toUpperCase()}
+            </div>
+            <div className="text-right tnum">{t.amount.toLocaleString()}</div>
+            <div className="text-right tnum">{t.price}</div>
+            <div className="text-fg-faint">{t.role}</div>
+            <div className="text-right text-fg-dim">{t.cp}</div>
+            <div className="text-right tnum">{t.fee}</div>
           </div>
-          <div className="text-right tnum">{t.amount.toLocaleString()}</div>
-          <div className="text-right tnum">{t.price}</div>
-          <div className="text-fg-faint">{t.role}</div>
-          <div className="text-right text-fg-dim">{t.cp}</div>
-          <div className="text-right tnum">{t.fee}</div>
+
+          {/* Mobile card */}
+          <div className="md:hidden px-4 py-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-[14px]">{t.pair}</span>
+                <span
+                  className={`text-[11px] font-medium ${
+                    t.side === "buy" ? "text-buy" : "text-sell"
+                  }`}
+                >
+                  {t.side.toUpperCase()}
+                </span>
+                <span className="text-[10px] uppercase tracking-[0.12em] text-fg-faint border border-line rounded px-1.5">
+                  {t.role}
+                </span>
+              </div>
+              <span className="text-[11px] font-mono tnum text-fg-faint">
+                {t.time}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-y-1 text-[13px]">
+              <span className="text-fg-faint">Amount</span>
+              <span className="text-right font-mono tnum">
+                {t.amount.toLocaleString()}
+              </span>
+              <span className="text-fg-faint">Price</span>
+              <span className="text-right font-mono tnum">{t.price}</span>
+              <span className="text-fg-faint">Counter-party</span>
+              <span className="text-right font-mono text-fg-dim">{t.cp}</span>
+              <span className="text-fg-faint">Protocol Fee</span>
+              <span className="text-right font-mono tnum">{t.fee}</span>
+            </div>
+          </div>
         </div>
       ))}
     </div>

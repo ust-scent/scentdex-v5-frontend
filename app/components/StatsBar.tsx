@@ -22,7 +22,7 @@ export function StatsBar({ pair }: { pair: Pair }) {
         };
 
   return (
-    <div className="px-6 py-5 border-b border-line">
+    <div className="px-3 sm:px-6 py-4 sm:py-5 border-b border-line">
       <div className="flex flex-wrap items-end gap-x-10 gap-y-3">
         <Field
           label=""

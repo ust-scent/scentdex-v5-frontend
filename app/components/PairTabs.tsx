@@ -22,7 +22,10 @@ export function PairTabs({
   onChange: (p: Pair) => void;
 }) {
   return (
-    <div role="tablist" className="flex items-stretch gap-2 px-6 border-b border-line">
+    <div
+      role="tablist"
+      className="flex items-stretch gap-2 px-3 sm:px-6 border-b border-line overflow-x-auto"
+    >
       {PAIRS.map((p) => {
         const k = pairKey(p);
         const stats = DUMMY_STATS[k];

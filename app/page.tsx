@@ -15,13 +15,13 @@ export default function Home() {
       <PairTabs active={pair} onChange={setPair} />
       <StatsBar pair={pair} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr_1fr] gap-3 px-6 py-4">
+      <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr_1fr] gap-3 px-3 sm:px-6 py-3 sm:py-4">
         <OrderBook />
         <RecentTrades />
         <PlaceOrder pair={pair} />
       </div>
 
-      <div className="px-6 pb-8">
+      <div className="px-3 sm:px-6 pb-6 sm:pb-8">
         <BottomTabs />
       </div>
     </div>
