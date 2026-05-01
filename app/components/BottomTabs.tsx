@@ -1,7 +1,9 @@
 "use client";
 
-import { TOKENS } from "@/lib/tokens";
+import { useTokenStatus } from "@/lib/hooks/useTokenStatus";
+import { TOKENS, type Token } from "@/lib/tokens";
 import { useState } from "react";
+import { formatUnits } from "viem";
 
 type Tab = "orders" | "history" | "permit2";
 
@@ -261,79 +263,185 @@ function Permit2() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <Permit2Card token="SCENT" used="13.28K" cap="50.00K" expiresIn={24} status="active" />
-        <Permit2Card token="JPYC" used="482.33K" cap="2.00M" expiresIn={24} status="active" />
-        <Permit2Card token="USDT" status="not-approved" />
+        {TOKENS.map((token) => (
+          <Permit2Card key={token.symbol} token={token} />
+        ))}
       </div>
     </div>
   );
 }
 
-function Permit2Card({
-  token,
-  used,
-  cap,
-  expiresIn,
-  status,
-}: {
-  token: string;
-  used?: string;
-  cap?: string;
-  expiresIn?: number;
-  status: "active" | "not-approved";
-}) {
-  const t = TOKENS.find((x) => x.symbol === token);
+const SEPOLIA_CHAIN_ID = 11155111;
+
+function Permit2Card({ token }: { token: Token }) {
+  const s = useTokenStatus(token);
+  const isSepolia = s.chainId === SEPOLIA_CHAIN_ID;
+  const isApproved = s.allowance > 0n;
+  const hasAddress = Boolean(s.tokenAddress);
+
+  // Decide displayed state.
+  const state: "no-address" | "disconnected" | "approved" | "not-approved" =
+    !hasAddress
+      ? "no-address"
+      : !s.isConnected
+      ? "disconnected"
+      : isApproved
+      ? "approved"
+      : "not-approved";
+
   return (
     <div className="border border-line rounded-md p-4 bg-white/[0.015]">
       <div className="flex items-center gap-3 mb-3">
         <div
-          className={`w-8 h-8 rounded-full flex items-center justify-center text-bg font-bold text-[12px] ${t?.accentClass ?? "bg-fg-dim"}`}
+          className={`w-8 h-8 rounded-full flex items-center justify-center text-bg font-bold text-[12px] ${token.accentClass}`}
         >
-          {token.charAt(0)}
+          {token.symbol.charAt(0)}
         </div>
-        <div className="font-medium text-[14px] flex-1">{token}</div>
-        {status === "active" ? (
-          <span className="text-[11px] px-2 py-0.5 rounded-full bg-buy/15 text-buy">
-            Active
-          </span>
-        ) : (
-          <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/[0.05] text-fg-dim">
-            Not approved
-          </span>
-        )}
+        <div className="font-medium text-[14px] flex-1">
+          {token.symbol}
+          <div className="text-[11px] text-fg-faint font-normal">
+            {token.name}
+          </div>
+        </div>
+        <StateBadge state={state} />
       </div>
 
-      {status === "active" ? (
+      {state === "no-address" ? (
+        <p className="text-[12px] text-fg-faint leading-relaxed">
+          Not deployed on this network yet. Switch to{" "}
+          <strong className="text-fg-dim">Sepolia</strong> to test.
+        </p>
+      ) : state === "disconnected" ? (
+        <p className="text-[12px] text-fg-dim leading-relaxed">
+          Connect your wallet to view your {token.symbol} balance and Permit2
+          status.
+        </p>
+      ) : (
+        <PermitBody token={token} status={s} isApproved={isApproved} isSepolia={isSepolia} />
+      )}
+    </div>
+  );
+}
+
+function StateBadge({
+  state,
+}: {
+  state: "no-address" | "disconnected" | "approved" | "not-approved";
+}) {
+  if (state === "approved") {
+    return (
+      <span className="text-[11px] px-2 py-0.5 rounded-full bg-buy/15 text-buy">
+        Active
+      </span>
+    );
+  }
+  if (state === "not-approved") {
+    return (
+      <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/[0.05] text-fg-dim">
+        Not approved
+      </span>
+    );
+  }
+  return (
+    <span className="text-[11px] px-2 py-0.5 rounded-full bg-white/[0.05] text-fg-faint">
+      —
+    </span>
+  );
+}
+
+function PermitBody({
+  token,
+  status,
+  isApproved,
+  isSepolia,
+}: {
+  token: Token;
+  status: ReturnType<typeof useTokenStatus>;
+  isApproved: boolean;
+  isSepolia: boolean;
+}) {
+  const balance = formatUnits(status.balance, token.decimals);
+  const balanceShort = trimTrailingZeros(balance, 4);
+
+  return (
+    <>
+      <div className="mb-3 flex items-baseline justify-between text-[12px]">
+        <span className="text-fg-faint uppercase tracking-[0.14em] text-[10px]">
+          Balance
+        </span>
+        <span className="font-mono tnum text-fg">
+          {status.balanceLoading ? "…" : balanceShort} {token.symbol}
+        </span>
+      </div>
+
+      {isApproved ? (
         <>
-          <div className="mb-2 flex items-baseline justify-between text-[11px]">
-            <span className="text-fg-faint uppercase tracking-[0.14em]">Used</span>
-            <span className="font-mono tnum text-fg-dim">
-              {used} / {cap}
-            </span>
+          <div className="mb-2 text-[12px] text-fg-dim leading-relaxed">
+            Permit2 is approved. SCENTDEX can route your signed orders without
+            another <code className="font-mono">approve</code> tx.
           </div>
-          <div className="h-1.5 rounded-full bg-white/[0.05] mb-3 overflow-hidden">
-            <div className="h-full bg-accent" style={{ width: "30%" }} />
-          </div>
-          <div className="flex items-center justify-between text-[12px]">
-            <span className="text-fg-dim">Expires in {expiresIn} days</span>
-            <button className="px-3 py-1 rounded text-fg-dim border border-line hover:text-fg hover:border-line-strong">
-              Re-approve
+          <div className="flex items-center justify-end">
+            <button
+              onClick={status.approve}
+              disabled={status.isApproving}
+              className="px-3 py-1 rounded text-[12px] text-fg-dim border border-line hover:text-fg hover:border-line-strong disabled:opacity-50"
+            >
+              {status.isApproving ? "Re-approving…" : "Re-approve"}
             </button>
           </div>
         </>
       ) : (
         <>
           <p className="text-[12px] text-fg-dim mb-3 leading-relaxed">
-            Approve once to start trading {token}. You'll sign a Permit2
-            typed-data message.
+            Approve once to start trading {token.symbol}. You'll sign a single
+            on-chain transaction granting Permit2 a max allowance.
           </p>
-          <button className="w-full py-2 rounded-md bg-accent text-bg font-medium text-[13px]">
-            Approve {token}
+          <button
+            onClick={status.approve}
+            disabled={status.isApproving}
+            className="w-full py-2 rounded-md bg-accent text-bg font-medium text-[13px] disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {status.isApproving ? "Approving…" : `Approve ${token.symbol}`}
           </button>
         </>
       )}
-    </div>
+
+      {isSepolia ? (
+        <div className="mt-3 pt-3 border-t border-line">
+          <div className="text-[10px] uppercase tracking-[0.14em] text-fg-faint mb-1.5">
+            Testnet faucet
+          </div>
+          <button
+            onClick={status.mintDefault}
+            disabled={status.isMinting}
+            className="w-full py-1.5 rounded-md bg-white/[0.04] text-[12px] text-fg-dim hover:text-fg hover:bg-white/[0.08] disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {status.isMinting
+              ? "Minting…"
+              : `Get 1,000 test ${token.symbol}`}
+          </button>
+        </div>
+      ) : null}
+
+      {status.approveError ? (
+        <p className="mt-2 text-[11px] text-sell">
+          {status.approveError.message.slice(0, 120)}
+        </p>
+      ) : null}
+      {status.mintError ? (
+        <p className="mt-2 text-[11px] text-sell">
+          {status.mintError.message.slice(0, 120)}
+        </p>
+      ) : null}
+    </>
   );
+}
+
+function trimTrailingZeros(s: string, maxDecimals = 4): string {
+  if (!s.includes(".")) return s;
+  const [whole, frac] = s.split(".");
+  const trimmed = frac.replace(/0+$/, "").slice(0, maxDecimals);
+  return trimmed.length === 0 ? whole : `${whole}.${trimmed}`;
 }
 
 function SubTab({
