@@ -16,7 +16,7 @@ export default function Home() {
       <StatsBar pair={pair} />
 
       <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr_1fr] gap-3 px-3 sm:px-6 py-3 sm:py-4">
-        <OrderBook />
+        <OrderBook pair={pair} />
         <PlaceOrder pair={pair} />
         <RecentTrades />
       </div>

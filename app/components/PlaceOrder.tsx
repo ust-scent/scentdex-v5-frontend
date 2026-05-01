@@ -113,12 +113,34 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
         primaryType: "Order",
         message: pendingOrder as never,
       });
+
+      // Post to /api/orders so it lands on the order book.
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          order: serialiseOrder(pendingOrder),
+          signature,
+          pair: `${pair.base}/${pair.quote}`,
+          chainId,
+        }),
+      });
+
+      if (!res.ok) {
+        const { error } = (await res.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        setLastResult({
+          ok: false,
+          error: `Order book rejected: ${error ?? `HTTP ${res.status}`}`,
+        });
+        return;
+      }
+
       setLastResult({ ok: true, signature });
       setModalOpen(false);
       setAmount("");
       setPrice("");
-      // Phase 3.3.x: POST {order, signature} to /api/orders so it lands on the order book.
-      // Until the API is wired we surface the signature to the user as a confirmation.
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setLastResult({ ok: false, error: msg.slice(0, 160) });
@@ -328,4 +350,19 @@ function Row({
 function fmtNum(n: number): string {
   if (!Number.isFinite(n) || n === 0) return "0.00";
   return n.toLocaleString(undefined, { maximumFractionDigits: 6 });
+}
+
+function serialiseOrder(order: Order) {
+  return {
+    maker: order.maker,
+    makerToken: order.makerToken,
+    takerToken: order.takerToken,
+    makerAmount: order.makerAmount.toString(),
+    takerAmount: order.takerAmount.toString(),
+    expiry: order.expiry.toString(),
+    nonce: order.nonce.toString(),
+    salt: order.salt,
+    feeSide: order.feeSide,
+    feeBps: order.feeBps,
+  };
 }
