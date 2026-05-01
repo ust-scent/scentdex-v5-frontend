@@ -13,7 +13,7 @@ import {
   randomSalt,
   type Order,
 } from "@/lib/order";
-import { TOKENS, type Pair } from "@/lib/tokens";
+import { TOKENS, feeConfig, type Pair } from "@/lib/tokens";
 import { useMemo, useState } from "react";
 import { useAccount, useChainId, useSignTypedData } from "wagmi";
 
@@ -43,6 +43,7 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
   >(null);
 
   // -- Form-derived totals ---------------------------------------------
+  const cfg = feeConfig(pair);
   const totals = useMemo(() => {
     const priceN = Number(price);
     const amountN = Number(amount);
@@ -50,9 +51,14 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
       return { total: 0, fee: 0, receive: 0 };
     }
     const total = priceN * amountN;
-    const fee = total * 0.1; // assume 10% fee on the maker side, matching pair config
+    // Fee only applies on the Case-A side (when the maker is selling feeSide token).
+    // For a sell of base: maker pays fee iff feeSide == base.
+    // For a buy of base: maker pays fee iff feeSide == quote.
+    const isFeeOnThisOrder =
+      side === "sell" ? cfg.feeSide === pair.base : cfg.feeSide === pair.quote;
+    const fee = isFeeOnThisOrder ? (total * cfg.feeBps) / 10_000 : 0;
     return { total, fee, receive: total - fee };
-  }, [price, amount]);
+  }, [price, amount, side, cfg.feeBps, cfg.feeSide, pair.base, pair.quote]);
 
   // -- Reasons we can't sign yet ---------------------------------------
   const reasons: string[] = [];
@@ -80,11 +86,15 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
       return;
     }
 
-    // Phase 3.3: feeBps and feeSide from current pair config — for Phase 3.3
-    // we hard-code the bootstrap value (1000 = 10%) and feeSide = SCENT.
-    // Phase 3.4 will read these from the contract via getOrderInfo / pairConfig.
-    const feeSide = baseToken.addresses[chainId]!; // fee charged on SCENT side
-    const feeBps = 1000;
+    // Pair fee config from lib/tokens.ts.
+    // Phase 3.4 will read these directly from the contract via pairConfig().
+    const feeSideToken = TOKENS.find((t) => t.symbol === cfg.feeSide);
+    const feeSide = feeSideToken?.addresses[chainId];
+    if (!feeSide) {
+      setLastResult({ ok: false, error: `Fee side ${cfg.feeSide} not deployed on this chain` });
+      return;
+    }
+    const feeBps = cfg.feeBps;
 
     const order: Order = {
       maker: account,
@@ -258,7 +268,8 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
           <Row
             k={
               <>
-                Protocol fee (10%) <span className="text-fg-faint">(maker)</span>
+                Protocol fee ({(cfg.feeBps / 100).toFixed(0)}%){" "}
+                <span className="text-fg-faint">(maker)</span>
               </>
             }
             v={`${fmtNum(totals.fee)} ${pair.quote}`}

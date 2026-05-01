@@ -8,6 +8,8 @@ type Stats = { price: string; change: string; positive: boolean };
 const DUMMY_STATS: Record<string, Stats> = {
   "SCENT/JPYC": { price: "0.0600", change: "+2.84%", positive: true },
   "SCENT/USDT": { price: "0.000420", change: "-1.21%", positive: false },
+  "SDO/USDT": { price: "0.0010", change: "+5.42%", positive: true },
+  "SDO/SCENT": { price: "2.4500", change: "+0.86%", positive: true },
 };
 
 function pairKey(p: Pair) {
