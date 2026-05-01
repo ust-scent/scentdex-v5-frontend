@@ -24,7 +24,7 @@ export const TOKENS: Token[] = [
     decimals: 18,
     addresses: {
       1: undefined,
-      11155111: undefined, // ← paste Sepolia MockERC20(SCENT) address here
+      11155111: "0xd7Fb54E63ab15df8B08dDAaD6AF7186fe033b8bB",
     },
     accentClass: "bg-amber-500",
   },
@@ -34,7 +34,7 @@ export const TOKENS: Token[] = [
     decimals: 18,
     addresses: {
       1: undefined,
-      11155111: undefined, // ← paste Sepolia MockERC20(JPYC) address here
+      11155111: "0x93db44f7dad70522D03E3CB7C393171dd24c8dea",
     },
     accentClass: "bg-blue-500",
   },
@@ -44,7 +44,7 @@ export const TOKENS: Token[] = [
     decimals: 6,
     addresses: {
       1: undefined,
-      11155111: undefined, // ← paste Sepolia MockERC20(USDT) address here
+      11155111: "0xd6E181384856C0679158b5710E567C0FCe54c21f",
     },
     accentClass: "bg-emerald-500",
   },

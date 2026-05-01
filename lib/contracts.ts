@@ -9,7 +9,7 @@ import type { Address } from "viem";
  */
 export const SCENTDEX_V5_ADDRESS: Record<number, Address | undefined> = {
   1: undefined,
-  11155111: undefined, // ← paste Sepolia deploy address here
+  11155111: "0x15c3c5b6e1d4ce4606606966B358E2fe3b2e2d7a",
 };
 
 /** Permit2 canonical address (same on every supported chain). */
