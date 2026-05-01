@@ -1,7 +1,21 @@
 "use client";
 
-import type { Pair } from "@/lib/tokens";
-import { useState } from "react";
+import {
+  SignConfirmModal,
+  type SignConfirmContext,
+} from "@/app/components/SignConfirmModal";
+import { SCENTDEX_V5_ADDRESS, SEPOLIA_CHAIN_ID } from "@/lib/contracts";
+import {
+  buildAmounts,
+  buildDomain,
+  expiryFromChoice,
+  ORDER_TYPES,
+  randomSalt,
+  type Order,
+} from "@/lib/order";
+import { TOKENS, type Pair } from "@/lib/tokens";
+import { useMemo, useState } from "react";
+import { useAccount, useChainId, useSignTypedData } from "wagmi";
 
 type Side = "buy" | "sell";
 type Expiry = "1h" | "1d" | "1w" | "custom";
@@ -11,6 +25,120 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
   const [price, setPrice] = useState("");
   const [amount, setAmount] = useState("");
   const [expiry, setExpiry] = useState<Expiry>("1d");
+
+  const { address: account, isConnected } = useAccount();
+  const chainId = useChainId();
+  const dexAddress = SCENTDEX_V5_ADDRESS[chainId];
+
+  const baseToken = TOKENS.find((t) => t.symbol === pair.base)!;
+  const quoteToken = TOKENS.find((t) => t.symbol === pair.quote)!;
+  const onSepolia = chainId === SEPOLIA_CHAIN_ID;
+
+  const { signTypedDataAsync, isPending: signing } = useSignTypedData();
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [pendingOrder, setPendingOrder] = useState<Order | null>(null);
+  const [lastResult, setLastResult] = useState<
+    { ok: true; signature: string; orderHash?: string } | { ok: false; error: string } | null
+  >(null);
+
+  // -- Form-derived totals ---------------------------------------------
+  const totals = useMemo(() => {
+    const priceN = Number(price);
+    const amountN = Number(amount);
+    if (Number.isNaN(priceN) || Number.isNaN(amountN) || priceN <= 0 || amountN <= 0) {
+      return { total: 0, fee: 0, receive: 0 };
+    }
+    const total = priceN * amountN;
+    const fee = total * 0.1; // assume 10% fee on the maker side, matching pair config
+    return { total, fee, receive: total - fee };
+  }, [price, amount]);
+
+  // -- Reasons we can't sign yet ---------------------------------------
+  const reasons: string[] = [];
+  if (!isConnected) reasons.push("Connect wallet");
+  if (!onSepolia) reasons.push("Switch to Sepolia");
+  if (!dexAddress) reasons.push("Contract not deployed on this chain");
+  if (!baseToken.addresses[chainId] || !quoteToken.addresses[chainId])
+    reasons.push("Tokens not deployed on this chain");
+  if (!price || Number(price) <= 0) reasons.push("Enter a price");
+  if (!amount || Number(amount) <= 0) reasons.push("Enter an amount");
+  const canSign = reasons.length === 0;
+
+  function startSign() {
+    if (!canSign || !account || !dexAddress) return;
+
+    const amounts = buildAmounts({
+      side,
+      base: baseToken,
+      quote: quoteToken,
+      amount,
+      price,
+    });
+    if (!amounts) {
+      setLastResult({ ok: false, error: "Could not build order amounts" });
+      return;
+    }
+
+    // Phase 3.3: feeBps and feeSide from current pair config — for Phase 3.3
+    // we hard-code the bootstrap value (1000 = 10%) and feeSide = SCENT.
+    // Phase 3.4 will read these from the contract via getOrderInfo / pairConfig.
+    const feeSide = baseToken.addresses[chainId]!; // fee charged on SCENT side
+    const feeBps = 1000;
+
+    const order: Order = {
+      maker: account,
+      makerToken: amounts.makerToken,
+      takerToken: amounts.takerToken,
+      makerAmount: amounts.makerAmount,
+      takerAmount: amounts.takerAmount,
+      expiry: expiryFromChoice(expiry),
+      nonce: BigInt(Math.floor(Date.now() / 1000)), // unix-second monotonic seed
+      salt: randomSalt(),
+      feeSide,
+      feeBps,
+    };
+
+    setPendingOrder(order);
+    setLastResult(null);
+    setModalOpen(true);
+  }
+
+  async function confirmSign() {
+    if (!pendingOrder || !dexAddress) return;
+    try {
+      const signature = await signTypedDataAsync({
+        domain: buildDomain(chainId, dexAddress),
+        types: ORDER_TYPES as never,
+        primaryType: "Order",
+        message: pendingOrder as never,
+      });
+      setLastResult({ ok: true, signature });
+      setModalOpen(false);
+      setAmount("");
+      setPrice("");
+      // Phase 3.3.x: POST {order, signature} to /api/orders so it lands on the order book.
+      // Until the API is wired we surface the signature to the user as a confirmation.
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setLastResult({ ok: false, error: msg.slice(0, 160) });
+    }
+  }
+
+  const ctx: SignConfirmContext | null =
+    pendingOrder && account
+      ? {
+          chainId,
+          walletAddress: account,
+          order: pendingOrder,
+          baseToken,
+          quoteToken,
+          side,
+          // Phase 3.4: read these from the contract.
+          minTakerAmount: undefined,
+          maxPriceRatio: undefined,
+        }
+      : null;
 
   return (
     <section className="bg-bg-soft border border-line rounded-lg overflow-hidden flex flex-col">
@@ -26,7 +154,7 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
       </header>
 
       <div className="p-4 flex flex-col gap-4 flex-1">
-        {/* Side selector */}
+        {/* Side */}
         <div className="grid grid-cols-2 gap-2">
           <button
             onClick={() => setSide("buy")}
@@ -50,7 +178,6 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
           </button>
         </div>
 
-        {/* Price */}
         <Field label="Price" suffix={pair.quote}>
           <input
             inputMode="decimal"
@@ -61,7 +188,6 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
           />
         </Field>
 
-        {/* Amount */}
         <Field label="Amount" suffix={pair.base}>
           <input
             inputMode="decimal"
@@ -72,7 +198,6 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
           />
         </Field>
 
-        {/* Quick % buttons */}
         <div className="grid grid-cols-4 gap-2">
           {[25, 50, 75, 100].map((p) => (
             <button
@@ -84,7 +209,6 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
           ))}
         </div>
 
-        {/* Expiry */}
         <div>
           <div className="text-[10px] uppercase tracking-[0.14em] text-fg-faint mb-2">
             Expires
@@ -108,26 +232,54 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
 
         {/* Summary */}
         <div className="mt-2 px-3 py-3 rounded-md bg-white/[0.015] border border-line space-y-2 text-[13px]">
-          <Row k="Total" v={`0.00 ${pair.quote}`} />
+          <Row k="Total" v={`${fmtNum(totals.total)} ${pair.quote}`} />
           <Row
             k={
               <>
-                Protocol fee (10%){" "}
-                <span className="text-fg-faint">(maker)</span>
+                Protocol fee (10%) <span className="text-fg-faint">(maker)</span>
               </>
             }
-            v={`0.00 ${pair.quote}`}
+            v={`${fmtNum(totals.fee)} ${pair.quote}`}
           />
-          <Row k="You receive (at least)" v={`0.00 ${pair.quote}`} dim />
+          <Row
+            k="You receive (at least)"
+            v={`${fmtNum(totals.receive)} ${pair.quote}`}
+            dim
+          />
         </div>
 
+        {lastResult ? (
+          lastResult.ok ? (
+            <div className="px-3 py-2 rounded-md border border-buy/30 bg-buy/[0.05] text-[12px] text-buy">
+              Order signed. Signature: <span className="font-mono text-[11px]">{lastResult.signature.slice(0, 10)}…{lastResult.signature.slice(-8)}</span>
+              <div className="text-fg-faint mt-1">
+                Phase 3.3 next: post to /api/orders so it appears on the book.
+              </div>
+            </div>
+          ) : (
+            <div className="px-3 py-2 rounded-md border border-sell/30 bg-sell/[0.05] text-[12px] text-sell">
+              {lastResult.error}
+            </div>
+          )
+        ) : null}
+
         <button
-          disabled
+          onClick={startSign}
+          disabled={!canSign || signing}
           className="mt-2 w-full py-3 rounded-md bg-accent text-bg font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+          title={reasons.join(" · ")}
         >
-          Sign Order
+          {!canSign ? reasons[0] : signing ? "Waiting for wallet…" : "Sign Order"}
         </button>
       </div>
+
+      <SignConfirmModal
+        open={modalOpen}
+        ctx={ctx}
+        onCancel={() => setModalOpen(false)}
+        onConfirm={confirmSign}
+        signing={signing}
+      />
     </section>
   );
 }
@@ -171,4 +323,9 @@ function Row({
       <span className="font-mono tnum">{v}</span>
     </div>
   );
+}
+
+function fmtNum(n: number): string {
+  if (!Number.isFinite(n) || n === 0) return "0.00";
+  return n.toLocaleString(undefined, { maximumFractionDigits: 6 });
 }
