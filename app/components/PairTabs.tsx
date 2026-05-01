@@ -6,8 +6,8 @@ import { useState } from "react";
 type Stats = { price: string; change: string; positive: boolean };
 
 const DUMMY_STATS: Record<string, Stats> = {
-  "SCENT/JPYC": { price: "12.4800", change: "+2.84%", positive: true },
-  "SCENT/USDT": { price: "0.0832", change: "-1.21%", positive: false },
+  "SCENT/JPYC": { price: "0.0600", change: "+2.84%", positive: true },
+  "SCENT/USDT": { price: "0.000420", change: "-1.21%", positive: false },
 };
 
 function pairKey(p: Pair) {

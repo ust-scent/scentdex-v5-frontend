@@ -5,20 +5,20 @@ export function StatsBar({ pair }: { pair: Pair }) {
   const stats =
     pair.quote === "JPYC"
       ? {
-          price: "12.4800",
+          price: "0.0600",
           change: "+2.84%",
           positive: true,
-          volume24h: "184.25M JPYC",
-          high24h: "12.9043",
-          low24h: "12.0307",
+          volume24h: "1.24M JPYC",
+          high24h: "0.0618",
+          low24h: "0.0584",
         }
       : {
-          price: "0.0832",
+          price: "0.000420",
           change: "-1.21%",
           positive: false,
-          volume24h: "1.21M USDT",
-          high24h: "0.0851",
-          low24h: "0.0820",
+          volume24h: "8.7K USDT",
+          high24h: "0.000432",
+          low24h: "0.000415",
         };
 
   return (
