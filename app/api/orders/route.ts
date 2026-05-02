@@ -137,11 +137,14 @@ export async function POST(req: NextRequest) {
   try {
     recovered = await recoverTypedDataAddress({
       domain: buildDomain(chainId, dexAddress),
-      types: ORDER_TYPES as never,
+      types: ORDER_TYPES,
       primaryType: "Order",
-      message: reified as never,
+      // viem's generic infers the message shape from `types`, but our reified
+      // order uses bigints which don't match the strict primitive inference.
+      // The runtime check is correct; we only need to silence the static check.
+      message: reified as unknown as Record<string, unknown>,
       signature,
-    });
+    } as Parameters<typeof recoverTypedDataAddress>[0]);
   } catch (e) {
     return NextResponse.json(
       { error: `signature recovery failed: ${e instanceof Error ? e.message : String(e)}` },

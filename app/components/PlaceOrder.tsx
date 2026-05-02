@@ -119,10 +119,10 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
     try {
       const signature = await signTypedDataAsync({
         domain: buildDomain(chainId, dexAddress),
-        types: ORDER_TYPES as never,
+        types: ORDER_TYPES,
         primaryType: "Order",
-        message: pendingOrder as never,
-      });
+        message: pendingOrder as unknown as Record<string, unknown>,
+      } as Parameters<typeof signTypedDataAsync>[0]);
 
       // Post to /api/orders so it lands on the order book.
       const res = await fetch("/api/orders", {
