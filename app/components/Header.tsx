@@ -5,9 +5,8 @@ import Image from "next/image";
 import Link from "next/link";
 
 const NAV = [
-  { href: "/", label: "Trade" },
-  { href: "/about", label: "About" },
-  { href: "/faq", label: "FAQ" },
+  { href: "/", label: "Home" },
+  { href: "/trade", label: "Trade" },
 ] as const;
 
 export function Header() {
