@@ -3,6 +3,7 @@
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 const NAV = [
   { href: "/", label: "Home" },
@@ -10,6 +11,9 @@ const NAV = [
 ] as const;
 
 export function Header() {
+  const pathname = usePathname();
+  const isJa = pathname?.startsWith("/ja");
+
   return (
     <header className="sticky top-0 z-30 backdrop-blur-md bg-bg/80 border-b border-line">
       <div className="max-w-[1440px] mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
@@ -42,7 +46,31 @@ export function Header() {
           </nav>
         </div>
 
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          <div
+            role="group"
+            aria-label="Language"
+            className="hidden sm:flex items-center text-[11px] font-mono"
+          >
+            <Link
+              href="/"
+              aria-current={!isJa ? "page" : undefined}
+              className={`px-2 py-1 rounded-l-md border border-line border-r-0 ${
+                !isJa ? "bg-white/[0.06] text-fg" : "text-fg-dim hover:text-fg"
+              }`}
+            >
+              EN
+            </Link>
+            <Link
+              href="/ja"
+              aria-current={isJa ? "page" : undefined}
+              className={`px-2 py-1 rounded-r-md border border-line ${
+                isJa ? "bg-white/[0.06] text-fg" : "text-fg-dim hover:text-fg"
+              }`}
+            >
+              JA
+            </Link>
+          </div>
           <ConnectButton
             label="Connect"
             accountStatus={{ smallScreen: "avatar", largeScreen: "address" }}
@@ -53,20 +81,39 @@ export function Header() {
       </div>
 
       {/* Mobile bottom-row nav: only nav links, not the brand row */}
-      <nav
-        aria-label="Primary mobile"
-        className="md:hidden flex items-center gap-1 px-4 pb-2 pt-1 border-t border-line"
-      >
-        {NAV.map((item) => (
+      <div className="md:hidden flex items-center justify-between gap-2 px-4 pb-2 pt-1 border-t border-line">
+        <nav aria-label="Primary mobile" className="flex items-center gap-1">
+          {NAV.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="px-3 py-1.5 rounded-md text-[13px] text-fg-dim hover:text-fg hover:bg-white/[0.03] transition-colors aria-[current=page]:bg-white/[0.04] aria-[current=page]:text-fg"
+            >
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+        <div role="group" aria-label="Language" className="flex items-center text-[11px] font-mono">
           <Link
-            key={item.href}
-            href={item.href}
-            className="px-3 py-1.5 rounded-md text-[13px] text-fg-dim hover:text-fg hover:bg-white/[0.03] transition-colors aria-[current=page]:bg-white/[0.04] aria-[current=page]:text-fg"
+            href="/"
+            aria-current={!isJa ? "page" : undefined}
+            className={`px-2 py-1 rounded-l-md border border-line border-r-0 ${
+              !isJa ? "bg-white/[0.06] text-fg" : "text-fg-dim"
+            }`}
           >
-            {item.label}
+            EN
           </Link>
-        ))}
-      </nav>
+          <Link
+            href="/ja"
+            aria-current={isJa ? "page" : undefined}
+            className={`px-2 py-1 rounded-r-md border border-line ${
+              isJa ? "bg-white/[0.06] text-fg" : "text-fg-dim"
+            }`}
+          >
+            JA
+          </Link>
+        </div>
+      </div>
     </header>
   );
 }
