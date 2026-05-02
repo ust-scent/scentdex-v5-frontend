@@ -4,7 +4,7 @@ import {
   SignConfirmModal,
   type SignConfirmContext,
 } from "@/app/components/SignConfirmModal";
-import { SCENTDEX_V5_ADDRESS, SEPOLIA_CHAIN_ID } from "@/lib/contracts";
+import { SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
 import {
   buildAmounts,
   buildDomain,
@@ -32,7 +32,6 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
 
   const baseToken = TOKENS.find((t) => t.symbol === pair.base)!;
   const quoteToken = TOKENS.find((t) => t.symbol === pair.quote)!;
-  const onSepolia = chainId === SEPOLIA_CHAIN_ID;
 
   const { signTypedDataAsync, isPending: signing } = useSignTypedData();
 
@@ -63,10 +62,12 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
   // -- Reasons we can't sign yet ---------------------------------------
   const reasons: string[] = [];
   if (!isConnected) reasons.push("Connect wallet");
-  if (!onSepolia) reasons.push("Switch to Sepolia");
-  if (!dexAddress) reasons.push("Contract not deployed on this chain");
-  if (!baseToken.addresses[chainId] || !quoteToken.addresses[chainId])
-    reasons.push("Tokens not deployed on this chain");
+  if (!dexAddress) reasons.push("Switch to a supported network");
+  if (
+    dexAddress &&
+    (!baseToken.addresses[chainId] || !quoteToken.addresses[chainId])
+  )
+    reasons.push("Pair not available on this network");
   if (!price || Number(price) <= 0) reasons.push("Enter a price");
   if (!amount || Number(amount) <= 0) reasons.push("Enter an amount");
   const canSign = reasons.length === 0;

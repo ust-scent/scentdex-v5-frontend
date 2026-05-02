@@ -52,7 +52,7 @@ function Hero() {
           href="/trade"
           className="inline-flex items-center justify-center px-6 py-3 rounded-md bg-accent text-bg font-medium text-[15px] hover:opacity-90 transition-opacity"
         >
-          Start trading on Sepolia →
+          Open the trade interface →
         </Link>
         <a
           href="https://github.com/ust-scent/scentdex-v5"
@@ -294,12 +294,12 @@ function FinalCTA() {
   return (
     <section className="text-center py-6">
       <h2 className="text-[28px] sm:text-[36px] font-medium tracking-tight mb-3">
-        Ready to test?
+        Ready to trade?
       </h2>
       <p className="text-[15px] text-fg-dim max-w-[480px] mx-auto leading-relaxed mb-7">
-        SCENTDEX is currently in <strong className="text-fg">testnet preview</strong> on Sepolia.
-        Connect MetaMask, get test tokens from the in-app faucet, and try a
-        signed order. No real funds at risk.
+        Connect a wallet, approve Permit2 once per token, and sign your first
+        order. Cancel anytime before expiry — your funds never leave your
+        wallet until a fill happens.
       </p>
       <Link
         href="/trade"

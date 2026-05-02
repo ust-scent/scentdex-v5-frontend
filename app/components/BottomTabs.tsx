@@ -271,13 +271,15 @@ function Permit2() {
   );
 }
 
-const SEPOLIA_CHAIN_ID = 11155111;
-
 function Permit2Card({ token }: { token: Token }) {
   const s = useTokenStatus(token);
-  const isSepolia = s.chainId === SEPOLIA_CHAIN_ID;
   const isApproved = s.allowance > 0n;
   const hasAddress = Boolean(s.tokenAddress);
+  // Faucet is only meaningful when the deployed token contract has a public
+  // mint() (true for the MockERC20 we ship; production ERC-20s do not).
+  // We expose it on every chain where a token address is configured;
+  // mainnet ERC-20s without mint will simply revert client-side.
+  const faucetEnabled = hasAddress;
 
   // Decide displayed state.
   const state: "no-address" | "disconnected" | "approved" | "not-approved" =
@@ -308,8 +310,7 @@ function Permit2Card({ token }: { token: Token }) {
 
       {state === "no-address" ? (
         <p className="text-[12px] text-fg-faint leading-relaxed">
-          Not deployed on this network yet. Switch to{" "}
-          <strong className="text-fg-dim">Sepolia</strong> to test.
+          Not deployed on this network.
         </p>
       ) : state === "disconnected" ? (
         <p className="text-[12px] text-fg-dim leading-relaxed">
@@ -317,7 +318,12 @@ function Permit2Card({ token }: { token: Token }) {
           status.
         </p>
       ) : (
-        <PermitBody token={token} status={s} isApproved={isApproved} isSepolia={isSepolia} />
+        <PermitBody
+          token={token}
+          status={s}
+          isApproved={isApproved}
+          faucetEnabled={faucetEnabled}
+        />
       )}
     </div>
   );
@@ -353,12 +359,12 @@ function PermitBody({
   token,
   status,
   isApproved,
-  isSepolia,
+  faucetEnabled,
 }: {
   token: Token;
   status: ReturnType<typeof useTokenStatus>;
   isApproved: boolean;
-  isSepolia: boolean;
+  faucetEnabled: boolean;
 }) {
   const balance = formatUnits(status.balance, token.decimals);
   const balanceShort = trimTrailingZeros(balance, 4);
@@ -406,10 +412,10 @@ function PermitBody({
         </>
       )}
 
-      {isSepolia ? (
+      {faucetEnabled ? (
         <div className="mt-3 pt-3 border-t border-line">
           <div className="text-[10px] uppercase tracking-[0.14em] text-fg-faint mb-1.5">
-            Testnet faucet
+            Faucet
           </div>
           <button
             onClick={status.mintDefault}
@@ -418,7 +424,7 @@ function PermitBody({
           >
             {status.isMinting
               ? "Minting…"
-              : `Get 1,000 test ${token.symbol}`}
+              : `Get 1,000 ${token.symbol}`}
           </button>
         </div>
       ) : null}

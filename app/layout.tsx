@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
 
 import { Header } from "@/app/components/Header";
-import { TestnetBanner } from "@/app/components/TestnetBanner";
 import { Providers } from "@/app/providers";
 import "./globals.css";
 
@@ -50,7 +49,6 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-bg text-fg font-sans">
         <Providers>
-          <TestnetBanner />
           <Header />
           <main className="flex-1">{children}</main>
         </Providers>
