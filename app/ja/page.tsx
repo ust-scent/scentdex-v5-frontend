@@ -40,13 +40,13 @@ function Hero() {
       <h1 className="text-[44px] sm:text-[64px] font-medium tracking-tight leading-[0.95] mb-5">
         Scent Token を、
         <br />
-        Peer-to-Peer で。
+        あなたから誰かへ。
       </h1>
       <p className="text-[17px] sm:text-[19px] text-fg-dim max-w-[600px] mx-auto leading-relaxed mb-9">
-        SCENTDEX は、別のウォレットと直接取引する指値オーダー型の取引所です。
-        <strong className="text-fg">エスクローなし</strong>、
-        <strong className="text-fg">カストディなし</strong>。
-        約定の瞬間まで、資金はあなたのウォレットの中にあります。
+        SCENTDEX は、Scent Token を売りたい人と買いたい人をつなぐ場所です。
+        間に取引所が入って預かることはなく、
+        <strong className="text-fg">あなたとお相手が直接、その場で交換</strong>します。
+        交換の瞬間まで、トークンはずっとあなたの手元にあります。
       </p>
       <div className="flex flex-wrap items-center justify-center gap-3">
         <Link
@@ -61,7 +61,7 @@ function Hero() {
           rel="noopener"
           className="inline-flex items-center justify-center px-6 py-3 rounded-md border border-line text-fg-dim hover:text-fg hover:border-line-strong text-[15px]"
         >
-          ソースコード
+          ソースコードを見る
         </a>
       </div>
     </section>
@@ -72,25 +72,30 @@ function WhatIsSCENTDEX() {
   return (
     <section>
       <SectionHeading kicker="01" title="SCENTDEX とは" />
+      <p className="text-[16px] text-fg-dim leading-relaxed mb-4">
+        Scent Token を、別の誰かと直接交換するためのサービスです。
+        フリマアプリのように、出品(売り注文)を出すか、
+        他の人の出品を見て買うか、どちらでも参加できます。
+      </p>
       <p className="text-[16px] text-fg-dim leading-relaxed mb-8">
-        SCENTDEX は、Scent Token (SCENT) のために作られた分散型取引所
-        (DEX) です。Uniswap や Curve のようなプール型 DEX とは違い、SCENTDEX は
-        本物の<strong className="text-fg">指値オーダーブック型</strong>です。
-        価格・数量・有効期限を自分で決め、それに同意した別のウォレットと
-        コントラクトがマッチングします。
+        ふつうの取引所と違うのは、
+        <strong className="text-fg">SCENTDEX があなたのトークンを預からない</strong>
+        という点です。「成立した瞬間に、双方の財布の中身が同時に入れ替わる」だけ。
+        失敗すれば何も動きません。途中で止まることはなく、
+        相手が裏切ることもできません。
       </p>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <FeatureCard
-          title="エスクローゼロ設計"
-          body="コントラクトはあなたのトークンを一切預かりません。約定はアトミックに実行され、いずれかのレッグが失敗すれば取引全体が巻き戻ります。"
+          title="トークンを預けない"
+          body="サービスがあなたのトークンを保管することは一度もありません。取引が成立した瞬間に、お互いの財布の中身が同時に動きます。"
         />
         <FeatureCard
-          title="監査ファースト"
-          body="社内レッドチーム + 4 ラウンドのマルチエージェント自動レビュー + 業界標準の静的解析 5 ツールすべてクリーン。本格運用の前に外部による正式監査を受けます。"
+          title="何度もチェック済み"
+          body="社内の専門チームに加えて、AI による多段レビュー、業界標準の自動解析ツール 5 種、すべてで問題なし。本格運用の前にさらに第三者の正式監査を受けます。"
         />
         <FeatureCard
-          title="EIP-712 署名済みオーダー"
-          body="オーダーはオフチェーンの署名メッセージとして存在します。キャンセルは無料、いつでも気が変われば取り下げ可能。秘密鍵が署名するのは、ウォレットが見せた内容そのものです。"
+          title="あなたが OK しないと動かない"
+          body="注文や取引が動くのは、あなたが署名(承認)したときだけ。気が変わったらいつでも無料で取り消しできます。"
         />
       </div>
     </section>
@@ -104,24 +109,24 @@ function HowItWorks() {
 
       <div className="space-y-6">
         <FlowBlock
-          who="Maker(メイカー)"
-          summary="自分が決めた価格で SCENT を JPYC で売りたい人"
+          who="売る人"
+          summary="自分の希望価格で Scent Token を売りたい場合"
           steps={[
-            "ウォレット接続(MetaMask、Rabby、Coinbase Wallet など、標準的な EOA なら何でも)",
-            "初回のみ:各トークンに対して Permit2 を承認(トークンごとに 1 回だけ)",
-            "「Place Order」を開いて価格・数量・有効期限を入力",
-            "オーダーに署名 — メッセージへの署名のみ、トランザクション不要、ガス不要",
-            "オーダーが公開オーダーブックに掲載され、誰かが約定するか期限切れ・キャンセルまで残ります",
+            "ウォレット(MetaMask など)を画面右上から接続",
+            "初回のみ、各トークンに「Permit2 を使ってもいい」という許可を出します(トークンごとに 1 回だけ)",
+            "価格・数量・有効期限を入力して、注文に署名(=ハンコを押す)",
+            "署名はメッセージへの押印だけ。手数料(ガス代)はかかりません",
+            "あなたの注文が掲示板に並び、誰かが買いに来るか、期限切れまで残ります",
           ]}
         />
         <FlowBlock
-          who="Taker(テイカー)"
-          summary="掲載されたオーダーを見て、価格に同意して約定する人"
+          who="買う人"
+          summary="掲示板に並ぶ売り注文を見て、買いたい場合"
           steps={[
-            "オーダーブックを見て、約定したい価格レベルをクリック",
-            "Fill トランザクションに署名・送信 — 1 ブロックで決済完了",
-            "メイカーの SCENT がテイカーへ、テイカーの JPYC がメイカーへ、手数料が UST トレジャリーへ — すべて 1 つのトランザクションでアトミックに",
-            "いずれかのレッグが失敗(残高不足・許可取り消し・期限切れ等)すれば、トランザクション全体が巻き戻り。中途半端な状態にはなりません。",
+            "掲示板から、欲しい価格の注文をクリック",
+            "ウォレットで承認 → 購入処理が 1 ブロック(約 12 秒)で完了",
+            "売り手のトークンがあなたへ、あなたの代金が売り手へ、手数料が運営トレジャリーへ — 一度に動きます",
+            "もし途中で何かがうまくいかなかったら(残高不足など)、すべて元に戻ります。中途半端な状態にはなりません。",
           ]}
         />
       </div>
@@ -132,45 +137,51 @@ function HowItWorks() {
 function Permit2Section() {
   return (
     <section>
-      <SectionHeading kicker="03" title="Permit2 とは" />
+      <SectionHeading kicker="03" title="Permit2 という仕組み" />
 
+      <p className="text-[16px] text-fg-dim leading-relaxed mb-4">
+        Permit2 とは、いわば「
+        <strong className="text-fg">使い回しの利く合鍵</strong>
+        」です。Uniswap という別のサービスが作った仕組みで、
+        多くの取引アプリが共通で使っています。
+      </p>
       <p className="text-[16px] text-fg-dim leading-relaxed mb-6">
-        Permit2 は、Uniswap が作った小さなコントラクトです。
-        DeFi の地味な不便さ —{" "}
-        <strong className="text-fg">dApp ごとに毎回 approve しないといけない問題</strong>
-        を解決します。Permit2 にトークンを 1 回承認しておくと、それ以降は
-        対応する dApp はトランザクションではなく署名メッセージで個別の取引許可を求めます。
+        ふつうは、新しいアプリを使うたびに「ここにトークンを使う許可をください」
+        という承認(=手数料がかかる手続き)が必要です。
+        Permit2 はこの「承認」を一度だけ済ませておくと、
+        以降は取引のたびに署名(無料、ボタンを押すだけ)で
+        済むようにしてくれます。
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <SmallCard
-          heading="Permit2 なし"
+          heading="Permit2 を使わない場合"
           tone="bad"
           items={[
-            "approve(Uniswap, MAX) — ガス必要",
-            "approve(SCENTDEX, MAX) — ガス必要",
-            "approve(別の DEX, MAX) — ガス必要",
-            "毎回ガス + ウォレット承認画面",
+            "Uniswap で使う前に → 承認(手数料)",
+            "SCENTDEX で使う前に → 承認(手数料)",
+            "別の取引所で使う前に → 承認(手数料)",
+            "毎回ガス代と承認画面が増える",
           ]}
         />
         <SmallCard
-          heading="Permit2 あり"
+          heading="Permit2 を使う場合"
           tone="good"
           items={[
-            "approve(Permit2, MAX) — トークンごとに 1 回だけ",
-            "取引ごとにメッセージ署名(無料、トランザクションではない)",
-            "Permit2 がアトミックに送金をルーティング",
-            "対応する dApp 全体で同じ allowance を共有",
+            "Permit2 にだけ承認(トークンごとに 1 回)",
+            "あとは取引のたびに署名(無料)",
+            "署名 1 回で全部の手続きが同時に進む",
+            "対応するアプリ全部で同じ許可を共有",
           ]}
         />
       </div>
 
       <p className="text-[15px] text-fg-faint leading-relaxed">
-        SCENTDEX が Permit2 を使うのは、メイカー → テイカー → トレジャリーの
-        3 つのレッグを 1 つのアトミックなトランザクションで完結させ、かつ
-        取引ごとの追加 approve を不要にするためです。トレードオフは、セキュリティモデルが
-        「特定のコントラクトを承認する」から「ウォレットが見せたメッセージを信頼する」に
-        変わること。ここでフィッシングのリスクが出てきます — 次のセクションで説明します。
+        SCENTDEX が Permit2 を使うのは、ガス代を節約しつつ、
+        売る人・買う人・運営トレジャリーの 3 方向の動きを 1 度の処理で
+        終わらせるためです。便利になる反面、
+        「ボタンを押す前にちゃんと中身を確認すること」が大事になります。
+        次のセクションで、そのチェック方法を説明します。
       </p>
     </section>
   );
@@ -179,48 +190,52 @@ function Permit2Section() {
 function PhishingSafety() {
   return (
     <section>
-      <SectionHeading kicker="04" title="フィッシング対策" />
+      <SectionHeading kicker="04" title="騙されないための仕組み" />
 
-      <p className="text-[16px] text-fg-dim leading-relaxed mb-6">
-        2024 年、Permit2 系の typed-data フィッシングで、約{" "}
-        <strong className="text-fg">26 万件のウォレットから合計 $314M(約 470 億円)</strong>
-        が盗まれました。被害者の多くは正規サイトに見えるクローンサイトで
-        メッセージに署名し、それが白紙の小切手だったことに気づいていませんでした。
+      <p className="text-[16px] text-fg-dim leading-relaxed mb-4">
+        2024 年、Permit2 を狙った詐欺によって、世界中で
+        <strong className="text-fg">およそ 26 万人が合計 $314M(約 470 億円)</strong>
+        を失いました。原因の多くは、本物そっくりの偽サイトで
+        うっかり署名してしまったこと。署名の中身は実は
+        「全財産の使用許可」だった、というケースがほとんどです。
       </p>
       <p className="text-[16px] text-fg-dim leading-relaxed mb-8">
-        SCENTDEX は、ウォレットに署名を要求する前に
-        <strong className="text-fg">4 つのチェック</strong>
-        を画面上で実行します。1 つでも失敗すると、Sign ボタンは赤い警告に
-        置き換わり、3 秒長押しの確認が必要になります — 何も考えずにクリックさせません。
+        SCENTDEX は、ウォレットに署名を求める前に、
+        <strong className="text-fg">画面の中で 4 つのチェック</strong>
+        を必ず実行します。1 つでも失敗すると、
+        署名ボタンが赤い警告に変わり、
+        3 秒長押ししないと進めない仕様になります。
+        うっかりクリックは起きません。
       </p>
 
       <div className="space-y-3">
         <RuleCard
           n="1"
-          title="ドメインチェック"
-          body="署名対象のコントラクトが、接続中のネットワーク上の正規 SCENTDEX V5 デプロイと一致するか確認します。クローンサイトが別のコントラクトアドレスで署名要求すれば、このチェックで弾かれます。"
+          title="正規のサイトかどうか"
+          body="今あなたが署名しようとしている相手が、本物の SCENTDEX のコントラクトと一致しているかを確認します。偽サイトはここで弾かれます。"
         />
         <RuleCard
           n="2"
-          title="本人チェック"
-          body="オーダー内のメイカーアドレスが、接続中のウォレットと一致するか確認します。フィッシングペイロードが別のアドレスでの署名を要求してきても、ここで検出します。"
+          title="あなた自身の注文か"
+          body="注文の「売主」が、今接続しているあなたのウォレットと一致しているかを確認します。誰か別の人になりすました署名要求はここで止まります。"
         />
         <RuleCard
           n="3"
-          title="フロアチェック"
-          body="テイカー量がトークン別の安全フロアを上回っていることを確認します。「100万 SCENT を 2 wei で売る」のような囮オーダーは、数字に気づかなくてもこれで弾かれます。"
+          title="価格が極端に安すぎないか"
+          body="「100 万 SCENT を 0.001 円で売る」のような明らかにおかしい注文を、自動的に検出して止めます。気付かなかった「ゼロが多すぎ・少なすぎ」も拾います。"
         />
         <RuleCard
           n="4"
-          title="価格レシオチェック"
-          body="価格レシオが設定された上限内に収まっているか確認します。極端な価格(時価の 1/1000 で渡す等)はこれで弾かれます。"
+          title="価格レートが妥当か"
+          body="一般的な相場から極端に離れた価格(時価の 1000 分の 1 等)は、間違いまたは詐欺の可能性が高いので、警告を出します。"
         />
       </div>
 
       <p className="text-[14px] text-fg-faint leading-relaxed mt-6">
-        加えて、すべての署名要求を
-        <strong className="text-fg-dim">プレーンな日本語のサマリー</strong>
-        で表示します:「X を渡し、手数料 Z を引いた後 Y 以上を受け取る、有効期限 D」。
+        さらに、署名画面では必ず内容を
+        <strong className="text-fg-dim">日本語で要約</strong>
+        して表示します。
+        「あなたが渡すもの:○○、受け取るもの(手数料を引いた後):○○、有効期限:◯月◯日」。
         この一文があなたの意図と違うなら、署名しないでください。
       </p>
     </section>
@@ -230,43 +245,49 @@ function PhishingSafety() {
 function AuditPosture() {
   return (
     <section>
-      <SectionHeading kicker="05" title="監査と運用" />
+      <SectionHeading kicker="05" title="安全性のチェック状況" />
+
+      <p className="text-[16px] text-fg-dim leading-relaxed mb-6">
+        スマートコントラクト(自動で動くプログラム)に間違いがあると、
+        資金が抜かれることがあります。SCENTDEX では、
+        本格運用に向けて以下のチェックを段階的に行っています。
+      </p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <AuditRow
           status="done"
-          label="社内レッドチームレビュー"
-          detail="脅威インテリジェンス・コントラクト設計・レッドチーム戦略・エクスプロイト実装・静的監査・ガバナンスを担当する 6 部署の専門エージェント"
+          label="社内専門チームによるレビュー"
+          detail="脅威分析・設計・攻撃シミュレーション・実装・監査・運用の 6 担当が、それぞれの目線で繰り返しチェック"
         />
         <AuditRow
           status="done"
-          label="/ultrareview(Anthropic)4 ラウンド"
-          detail="ラウンド 4 では source-only レビューブランチに対して 0 findings"
+          label="AI による多段レビュー(Anthropic 提供)"
+          detail="複数の AI エージェントが独立にコードを審査。4 ラウンド回した結果、最終ラウンドは指摘事項ゼロ"
         />
         <AuditRow
           status="done"
-          label="静的解析 5 ツール"
-          detail="Slither、Mythril、Aderyn、Wake、4naly3er — V5 コントラクト全クリーン"
+          label="自動解析ツール 5 種"
+          detail="業界標準のセキュリティチェッカー(Slither / Mythril / Aderyn / Wake / 4naly3er)を全て実行、すべて問題なし"
         />
         <AuditRow
           status="done"
-          label="セカンダリレビュー(Codex)"
-          detail="3 件の指摘、2 件を r6 に反映、1 件は意図的な設計選択として記録"
+          label="別系統の AI レビュー(Codex)"
+          detail="念のため別の AI ツールでも検証。3 件の指摘のうち 2 件を反映、1 件は意図的な仕様として記録"
         />
         <AuditRow
           status="pending"
-          label="外部正式監査"
-          detail="本格運用に向けて TVL 増加前に発注予定"
+          label="第三者の正式監査"
+          detail="本格運用に進む前に、外部の専門監査会社に発注予定"
         />
         <AuditRow
           status="pending"
-          label="バグバウンティプログラム"
-          detail="本番運用後、Immunefi 等で開設予定"
+          label="バグ報奨金プログラム"
+          detail="本番運用後、世界中の研究者が脆弱性を報告できる仕組みを開設予定"
         />
       </div>
 
       <p className="text-[13px] text-fg-faint leading-relaxed mt-6">
-        ソースコードは{" "}
+        コードはすべて公開しています:
         <a
           href="https://github.com/ust-scent/scentdex-v5"
           target="_blank"
@@ -274,16 +295,15 @@ function AuditPosture() {
           className="text-accent hover:underline"
         >
           github.com/ust-scent/scentdex-v5
-        </a>{" "}
-        にあります。第三者のレビュアーやセキュリティ研究者の検証を歓迎します。
-        脆弱性報告は{" "}
+        </a>
+        。脆弱性を見つけた方は{" "}
         <a
           href="mailto:cs@scenttoken.com"
           className="text-accent hover:underline"
         >
           cs@scenttoken.com
         </a>
-        まで。
+        までご連絡ください。
       </p>
     </section>
   );
@@ -293,12 +313,12 @@ function FinalCTA() {
   return (
     <section className="text-center py-6">
       <h2 className="text-[28px] sm:text-[36px] font-medium tracking-tight mb-3">
-        準備はいいですか?
+        さっそく試してみる
       </h2>
       <p className="text-[15px] text-fg-dim max-w-[480px] mx-auto leading-relaxed mb-7">
-        ウォレットを接続し、トークンごとに 1 度だけ Permit2 を承認してから、
-        最初のオーダーに署名してみてください。約定が起きるまで、
-        資金はウォレットから出ません。期限前ならいつでもキャンセルできます。
+        ウォレットを接続し、トークンごとに 1 度だけ Permit2 を承認するところから。
+        あなたが署名するまで、何も動きません。
+        期限が来る前なら、いつでも注文を取り消せます。
       </p>
       <Link
         href="/trade"
