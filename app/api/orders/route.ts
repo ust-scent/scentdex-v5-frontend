@@ -8,65 +8,30 @@ import {
 
 import { SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
 import { ORDER_TYPES, buildDomain, type Order } from "@/lib/order";
+import {
+  insertOrder,
+  listOrders,
+  type SerialisedOrder,
+  type StoredOrder,
+} from "@/lib/orders-store";
 
 /**
  * SCENTDEX V5 — Off-chain order book API
  *
  * POST /api/orders   — accept a maker's signed order
- * GET  /api/orders   — list active orders, optionally filtered by ?pair=
+ * GET  /api/orders   — list orders, optionally filtered by ?pair= and ?chainId=
  *
- * Phase 3.3 storage: process-local Map. This survives within a single
- * Next.js dev server, but evaporates on each Vercel cold start in
- * production. Phase 3.5 swaps in Upstash Redis (or Vercel Postgres)
- * + a cron-driven event indexer that watches OrderFilled / Cancelled
- * to drive `status` transitions.
+ * Storage moved to `lib/orders-store.ts` in Phase 3.5: Postgres when
+ * DATABASE_URL is set, in-memory Map otherwise. Cancel and reputation
+ * endpoints live alongside this file.
  *
- * Order is canonical, JSON-encoded with bigints serialised as strings.
- * The hash used as primary key is the on-chain orderHash (EIP-712 digest)
- * recomputed inside this handler for authenticity.
+ * The on-chain orderHash (EIP-712 digest) is the canonical identifier.
+ * For Phase 3.5 we still use the signature itself as the primary key —
+ * always 65 bytes, always unique per signed order. The proper digest
+ * computation lands when the indexer goes in (Phase 3.5b).
  */
 
-// ---------- types & storage --------------------------------------------------
-
-type StoredOrder = {
-  orderHash: Hex;
-  order: SerialisedOrder;
-  signature: Hex;
-  status: "open" | "partially-filled" | "filled" | "cancelled" | "expired";
-  filledMakerAmount: string;
-  filledTakerAmount: string;
-  pair: string; // canonical "MAKER_SYMBOL/TAKER_SYMBOL" — used for filtering
-  chainId: number;
-  createdAt: number; // unix seconds
-};
-
-type SerialisedOrder = {
-  maker: Address;
-  makerToken: Address;
-  takerToken: Address;
-  makerAmount: string;
-  takerAmount: string;
-  expiry: string;
-  nonce: string;
-  salt: Hex;
-  feeSide: Address;
-  feeBps: number;
-};
-
-declare global {
-  // Persist across HMR in dev. Recreated per cold start in prod.
-  // eslint-disable-next-line no-var
-  var __SCENTDEX_ORDERS__: Map<string, StoredOrder> | undefined;
-}
-
-function getStore(): Map<string, StoredOrder> {
-  if (!globalThis.__SCENTDEX_ORDERS__) {
-    globalThis.__SCENTDEX_ORDERS__ = new Map();
-  }
-  return globalThis.__SCENTDEX_ORDERS__;
-}
-
-// ---------- handlers ---------------------------------------------------------
+export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
@@ -74,27 +39,8 @@ export async function GET(req: NextRequest) {
   const chainParam = url.searchParams.get("chainId");
   const chainId = chainParam ? Number(chainParam) : undefined;
 
-  const all = Array.from(getStore().values());
-  const now = Math.floor(Date.now() / 1000);
-
-  const filtered = all
-    .filter((o) => (pair ? o.pair === pair : true))
-    .filter((o) => (chainId ? o.chainId === chainId : true))
-    .map((o) => {
-      // Lazy expiry transition
-      if (o.status === "open" || o.status === "partially-filled") {
-        const expiryUnix = Number(o.order.expiry);
-        if (expiryUnix > 0 && expiryUnix < now) {
-          return { ...o, status: "expired" as const };
-        }
-      }
-      return o;
-    });
-
-  // Sort: best price first per side. For now we just sort by createdAt desc.
-  filtered.sort((a, b) => b.createdAt - a.createdAt);
-
-  return NextResponse.json({ orders: filtered, count: filtered.length });
+  const orders = await listOrders({ pair, chainId });
+  return NextResponse.json({ orders, count: orders.length });
 }
 
 export async function POST(req: NextRequest) {
@@ -119,7 +65,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Reconstruct the bigint order for signature verification.
   const reified: Order = {
     maker: order.maker,
     makerToken: order.makerToken,
@@ -139,15 +84,16 @@ export async function POST(req: NextRequest) {
       domain: buildDomain(chainId, dexAddress),
       types: ORDER_TYPES,
       primaryType: "Order",
-      // viem's generic infers the message shape from `types`, but our reified
-      // order uses bigints which don't match the strict primitive inference.
-      // The runtime check is correct; we only need to silence the static check.
       message: reified as unknown as Record<string, unknown>,
       signature,
     } as Parameters<typeof recoverTypedDataAddress>[0]);
   } catch (e) {
     return NextResponse.json(
-      { error: `signature recovery failed: ${e instanceof Error ? e.message : String(e)}` },
+      {
+        error: `signature recovery failed: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      },
       { status: 400 },
     );
   }
@@ -163,18 +109,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Compute orderHash via the EIP-712 digest. We replay it via a structHash + domain
-  // separator to use as the primary key. For Phase 3.3 we use the signature itself
-  // as the unique identifier (always 65 bytes, always unique per signed order).
-  const orderHash = signature; // placeholder primary key
-
-  const store = getStore();
-  if (store.has(orderHash)) {
-    return NextResponse.json(
-      { error: "order already submitted" },
-      { status: 409 },
-    );
-  }
+  const orderHash: Hex = signature; // placeholder primary key — see file header
 
   const stored: StoredOrder = {
     orderHash,
@@ -187,7 +122,19 @@ export async function POST(req: NextRequest) {
     chainId,
     createdAt: Math.floor(Date.now() / 1000),
   };
-  store.set(orderHash, stored);
+
+  try {
+    await insertOrder(stored);
+  } catch (e) {
+    return NextResponse.json(
+      {
+        error: `failed to persist order: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      },
+      { status: 500 },
+    );
+  }
 
   return NextResponse.json({ ok: true, order: stored }, { status: 201 });
 }
@@ -246,12 +193,7 @@ function parseSubmitBody(
       return { ok: false, error: `order.${addrField} not a valid address` };
     }
   }
-  for (const numField of [
-    "makerAmount",
-    "takerAmount",
-    "expiry",
-    "nonce",
-  ]) {
+  for (const numField of ["makerAmount", "takerAmount", "expiry", "nonce"]) {
     const v = o[numField];
     if (typeof v !== "string") {
       return {
@@ -265,8 +207,15 @@ function parseSubmitBody(
       return { ok: false, error: `order.${numField} not parseable as bigint` };
     }
   }
-  if (typeof o.salt !== "string" || !o.salt.startsWith("0x") || o.salt.length !== 66) {
-    return { ok: false, error: "order.salt must be a 0x-prefixed 32-byte hex string" };
+  if (
+    typeof o.salt !== "string" ||
+    !o.salt.startsWith("0x") ||
+    o.salt.length !== 66
+  ) {
+    return {
+      ok: false,
+      error: "order.salt must be a 0x-prefixed 32-byte hex string",
+    };
   }
   if (typeof o.feeBps !== "number" || o.feeBps < 0 || o.feeBps > 10000) {
     return { ok: false, error: "order.feeBps must be 0..10000" };

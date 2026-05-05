@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslator } from "@/lib/locale-context";
 import { useTokenStatus } from "@/lib/hooks/useTokenStatus";
 import { TOKENS, type Token } from "@/lib/tokens";
 import { useState } from "react";
@@ -8,19 +9,20 @@ import { formatUnits } from "viem";
 type Tab = "orders" | "history" | "permit2";
 
 export function BottomTabs() {
+  const t = useTranslator();
   const [tab, setTab] = useState<Tab>("orders");
 
   return (
     <section className="bg-bg-soft border border-line rounded-lg overflow-hidden">
       <div className="flex items-center gap-1 px-3 pt-3 border-b border-line">
         <TabBtn active={tab === "orders"} onClick={() => setTab("orders")} count={4}>
-          My Orders
+          {t("trade.tabs.orders")}
         </TabBtn>
         <TabBtn active={tab === "history"} onClick={() => setTab("history")} count={6}>
-          History
+          {t("trade.tabs.history")}
         </TabBtn>
         <TabBtn active={tab === "permit2"} onClick={() => setTab("permit2")}>
-          Permit2
+          {t("trade.tabs.approvedTokens")}
         </TabBtn>
       </div>
 
@@ -62,6 +64,7 @@ function TabBtn({
 }
 
 function MyOrders() {
+  const t = useTranslator();
   const orders = [
     { pair: "SCENT/JPYC", side: "sell", price: "12.5500", amount: 800, filled: 30, status: "PartiallyFilled" },
     { pair: "SCENT/JPYC", side: "sell", price: "12.6200", amount: 1200, filled: 0, status: "Open" },
@@ -73,22 +76,22 @@ function MyOrders() {
     <div>
       <div className="px-3 py-2 flex flex-wrap items-center justify-between gap-2 border-b border-line">
         <div className="flex items-center gap-1">
-          <SubTab active>Active (4)</SubTab>
-          <SubTab>Historical (4)</SubTab>
+          <SubTab active>{t("trade.myOrders.active").replace("{count}", "4")}</SubTab>
+          <SubTab>{t("trade.myOrders.historical").replace("{count}", "4")}</SubTab>
         </div>
         <button className="text-[12px] px-2.5 py-1 rounded border border-line text-fg-dim hover:text-fg hover:border-line-strong">
-          🗑 Bulk cancel
+          {t("trade.myOrders.bulkCancel")}
         </button>
       </div>
 
       {/* Desktop table header */}
       <div className="hidden md:grid grid-cols-[1fr_80px_120px_1fr_120px_80px] px-4 py-2 text-[10px] uppercase tracking-[0.14em] text-fg-faint border-b border-line">
-        <div>Pair</div>
-        <div>Side</div>
-        <div>Price</div>
-        <div className="text-right">Amount / Filled</div>
-        <div className="text-center">Status</div>
-        <div className="text-right">Action</div>
+        <div>{t("trade.myOrders.pair")}</div>
+        <div>{t("trade.myOrders.side")}</div>
+        <div>{t("trade.myOrders.price")}</div>
+        <div className="text-right">{t("trade.myOrders.amountFilled")}</div>
+        <div className="text-center">{t("trade.myOrders.status")}</div>
+        <div className="text-right">{t("trade.myOrders.action")}</div>
       </div>
 
       {orders.map((o, i) => (
@@ -115,7 +118,7 @@ function MyOrders() {
             </div>
             <div className="text-right">
               <button className="text-[12px] px-2 py-1 rounded text-fg-dim hover:text-fg hover:bg-white/[0.05]">
-                Cancel
+                {t("trade.myOrders.cancel")}
               </button>
             </div>
           </div>
@@ -136,13 +139,13 @@ function MyOrders() {
               <StatusBadge status={o.status} />
             </div>
             <div className="grid grid-cols-2 gap-y-1.5 text-[13px] mb-3">
-              <span className="text-fg-faint">Price</span>
+              <span className="text-fg-faint">{t("trade.myOrders.price")}</span>
               <span className="text-right font-mono tnum">{o.price}</span>
-              <span className="text-fg-faint">Amount</span>
+              <span className="text-fg-faint">{t("trade.myOrders.amount")}</span>
               <span className="text-right font-mono tnum">
                 {o.amount.toLocaleString()}
               </span>
-              <span className="text-fg-faint">Filled</span>
+              <span className="text-fg-faint">{t("trade.myOrders.filled")}</span>
               <span className="text-right">
                 <span className="inline-flex items-center gap-2">
                   <span className="w-14 h-1 rounded-full bg-white/[0.05] overflow-hidden inline-block">
@@ -156,7 +159,7 @@ function MyOrders() {
               </span>
             </div>
             <button className="w-full py-2 rounded-md bg-white/[0.04] text-[13px] text-fg-dim hover:text-fg hover:bg-white/[0.08]">
-              Cancel
+              {t("trade.myOrders.cancel")}
             </button>
           </div>
         </div>
@@ -166,6 +169,7 @@ function MyOrders() {
 }
 
 function History() {
+  const t = useTranslator();
   const trades = [
     { time: "2026-05-01 10:42", pair: "SCENT/JPYC", side: "sell", amount: 240, price: "12.5500", role: "Maker", cp: "0x7a4b…2e91", fee: "24 JPYC" },
     { time: "2026-05-01 09:18", pair: "SCENT/JPYC", side: "buy", amount: 180, price: "12.4200", role: "Taker", cp: "0xc1f0…9d2a", fee: "18 JPYC" },
@@ -179,66 +183,66 @@ function History() {
     <div>
       {/* Desktop table header */}
       <div className="hidden md:grid grid-cols-[160px_140px_70px_1fr_120px_80px_1fr_100px] px-4 py-2 text-[10px] uppercase tracking-[0.14em] text-fg-faint border-b border-line">
-        <div>Time</div>
-        <div>Pair</div>
-        <div>Side</div>
-        <div className="text-right">Amount</div>
-        <div className="text-right">Price</div>
-        <div className="text-fg-faint">Role</div>
-        <div className="text-right">Counter-party</div>
-        <div className="text-right">Protocol Fee</div>
+        <div>{t("trade.history.time")}</div>
+        <div>{t("trade.history.pair")}</div>
+        <div>{t("trade.history.side")}</div>
+        <div className="text-right">{t("trade.history.amount")}</div>
+        <div className="text-right">{t("trade.history.price")}</div>
+        <div className="text-fg-faint">{t("trade.history.role")}</div>
+        <div className="text-right">{t("trade.history.counterparty")}</div>
+        <div className="text-right">{t("trade.history.protocolFee")}</div>
       </div>
 
-      {trades.map((t, i) => (
+      {trades.map((tr, i) => (
         <div
           key={i}
           className="border-b border-line last:border-b-0 hover:bg-white/[0.02]"
         >
           {/* Desktop row */}
           <div className="hidden md:grid grid-cols-[160px_140px_70px_1fr_120px_80px_1fr_100px] px-4 py-3 text-[13px] font-mono items-center">
-            <div className="text-fg-dim tnum">{t.time}</div>
-            <div className="font-sans font-medium">{t.pair}</div>
-            <div className={t.side === "buy" ? "text-buy" : "text-sell"}>
-              {t.side.toUpperCase()}
+            <div className="text-fg-dim tnum">{tr.time}</div>
+            <div className="font-sans font-medium">{tr.pair}</div>
+            <div className={tr.side === "buy" ? "text-buy" : "text-sell"}>
+              {tr.side.toUpperCase()}
             </div>
-            <div className="text-right tnum">{t.amount.toLocaleString()}</div>
-            <div className="text-right tnum">{t.price}</div>
-            <div className="text-fg-faint">{t.role}</div>
-            <div className="text-right text-fg-dim">{t.cp}</div>
-            <div className="text-right tnum">{t.fee}</div>
+            <div className="text-right tnum">{tr.amount.toLocaleString()}</div>
+            <div className="text-right tnum">{tr.price}</div>
+            <div className="text-fg-faint">{tr.role}</div>
+            <div className="text-right text-fg-dim">{tr.cp}</div>
+            <div className="text-right tnum">{tr.fee}</div>
           </div>
 
           {/* Mobile card */}
           <div className="md:hidden px-4 py-3">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                <span className="font-medium text-[14px]">{t.pair}</span>
+                <span className="font-medium text-[14px]">{tr.pair}</span>
                 <span
                   className={`text-[11px] font-medium ${
-                    t.side === "buy" ? "text-buy" : "text-sell"
+                    tr.side === "buy" ? "text-buy" : "text-sell"
                   }`}
                 >
-                  {t.side.toUpperCase()}
+                  {tr.side.toUpperCase()}
                 </span>
                 <span className="text-[10px] uppercase tracking-[0.12em] text-fg-faint border border-line rounded px-1.5">
-                  {t.role}
+                  {tr.role}
                 </span>
               </div>
               <span className="text-[11px] font-mono tnum text-fg-faint">
-                {t.time}
+                {tr.time}
               </span>
             </div>
             <div className="grid grid-cols-2 gap-y-1 text-[13px]">
-              <span className="text-fg-faint">Amount</span>
+              <span className="text-fg-faint">{t("trade.history.amount")}</span>
               <span className="text-right font-mono tnum">
-                {t.amount.toLocaleString()}
+                {tr.amount.toLocaleString()}
               </span>
-              <span className="text-fg-faint">Price</span>
-              <span className="text-right font-mono tnum">{t.price}</span>
-              <span className="text-fg-faint">Counter-party</span>
-              <span className="text-right font-mono text-fg-dim">{t.cp}</span>
-              <span className="text-fg-faint">Protocol Fee</span>
-              <span className="text-right font-mono tnum">{t.fee}</span>
+              <span className="text-fg-faint">{t("trade.history.price")}</span>
+              <span className="text-right font-mono tnum">{tr.price}</span>
+              <span className="text-fg-faint">{t("trade.history.counterparty")}</span>
+              <span className="text-right font-mono text-fg-dim">{tr.cp}</span>
+              <span className="text-fg-faint">{t("trade.history.protocolFee")}</span>
+              <span className="text-right font-mono tnum">{tr.fee}</span>
             </div>
           </div>
         </div>
@@ -248,16 +252,16 @@ function History() {
 }
 
 function Permit2() {
+  const t = useTranslator();
+
   return (
     <div className="p-4">
       <div className="px-4 py-3 mb-4 rounded-md bg-accent-soft border border-accent/30 text-[13px] flex items-start gap-2">
         <span aria-hidden="true">🛡</span>
         <span>
-          Permit2 lets SCENTDEX execute your signed orders without a separate{" "}
-          <code className="font-mono text-fg-dim">approve</code> tx per token.
-          Re-approve any time.{" "}
+          {t("trade.approvedTokens.description")}{" "}
           <a className="text-accent underline-offset-2 hover:underline" href="/permit2">
-            Learn more →
+            {t("trade.approvedTokens.learnMore")}
           </a>
         </span>
       </div>
@@ -272,16 +276,12 @@ function Permit2() {
 }
 
 function Permit2Card({ token }: { token: Token }) {
+  const t = useTranslator();
   const s = useTokenStatus(token);
   const isApproved = s.allowance > 0n;
   const hasAddress = Boolean(s.tokenAddress);
-  // Faucet is only meaningful when the deployed token contract has a public
-  // mint() (true for the MockERC20 we ship; production ERC-20s do not).
-  // We expose it on every chain where a token address is configured;
-  // mainnet ERC-20s without mint will simply revert client-side.
   const faucetEnabled = hasAddress;
 
-  // Decide displayed state.
   const state: "no-address" | "disconnected" | "approved" | "not-approved" =
     !hasAddress
       ? "no-address"
@@ -310,12 +310,11 @@ function Permit2Card({ token }: { token: Token }) {
 
       {state === "no-address" ? (
         <p className="text-[12px] text-fg-faint leading-relaxed">
-          Not deployed on this network.
+          {t("trade.approvedTokens.notDeployed")}
         </p>
       ) : state === "disconnected" ? (
         <p className="text-[12px] text-fg-dim leading-relaxed">
-          Connect your wallet to view your {token.symbol} balance and Permit2
-          status.
+          {t("trade.approvedTokens.connectWallet").replace("{symbol}", token.symbol)}
         </p>
       ) : (
         <PermitBody
@@ -366,6 +365,7 @@ function PermitBody({
   isApproved: boolean;
   faucetEnabled: boolean;
 }) {
+  const t = useTranslator();
   const balance = formatUnits(status.balance, token.decimals);
   const balanceShort = trimTrailingZeros(balance, 4);
 
@@ -373,7 +373,7 @@ function PermitBody({
     <>
       <div className="mb-3 flex items-baseline justify-between text-[12px]">
         <span className="text-fg-faint uppercase tracking-[0.14em] text-[10px]">
-          Balance
+          {t("trade.approvedTokens.balance")}
         </span>
         <span className="font-mono tnum text-fg">
           {status.balanceLoading ? "…" : balanceShort} {token.symbol}
@@ -383,8 +383,7 @@ function PermitBody({
       {isApproved ? (
         <>
           <div className="mb-2 text-[12px] text-fg-dim leading-relaxed">
-            Permit2 is approved. SCENTDEX can route your signed orders without
-            another <code className="font-mono">approve</code> tx.
+            {t("trade.approvedTokens.approved")}
           </div>
           <div className="flex items-center justify-end">
             <button
@@ -392,22 +391,25 @@ function PermitBody({
               disabled={status.isApproving}
               className="px-3 py-1 rounded text-[12px] text-fg-dim border border-line hover:text-fg hover:border-line-strong disabled:opacity-50"
             >
-              {status.isApproving ? "Re-approving…" : "Re-approve"}
+              {status.isApproving
+                ? t("trade.approvedTokens.reApproving")
+                : t("trade.approvedTokens.reApprove")}
             </button>
           </div>
         </>
       ) : (
         <>
           <p className="text-[12px] text-fg-dim mb-3 leading-relaxed">
-            Approve once to start trading {token.symbol}. You'll sign a single
-            on-chain transaction granting Permit2 a max allowance.
+            {t("trade.approvedTokens.notApproved").replace("{symbol}", token.symbol)}
           </p>
           <button
             onClick={status.approve}
             disabled={status.isApproving}
             className="w-full py-2 rounded-md bg-accent text-bg font-medium text-[13px] disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            {status.isApproving ? "Approving…" : `Approve ${token.symbol}`}
+            {status.isApproving
+              ? t("trade.approvedTokens.approving")
+              : t("trade.approvedTokens.approve").replace("{symbol}", token.symbol)}
           </button>
         </>
       )}
@@ -423,8 +425,8 @@ function PermitBody({
             className="w-full py-1.5 rounded-md bg-white/[0.04] text-[12px] text-fg-dim hover:text-fg hover:bg-white/[0.08] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {status.isMinting
-              ? "Minting…"
-              : `Get 1,000 ${token.symbol}`}
+              ? t("trade.approvedTokens.minting")
+              : t("trade.approvedTokens.getMint").replace("{symbol}", token.symbol)}
           </button>
         </div>
       ) : null}

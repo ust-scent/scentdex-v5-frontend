@@ -1,7 +1,11 @@
+"use client";
+
 /**
  * Recent Trades — Phase 1 placeholder.
  * Phase 3 source: indexer subscription to OrderFilled events.
  */
+
+import { useTranslator } from "@/lib/locale-context";
 
 type Trade = { price: string; amount: string; time: string; side: "buy" | "sell" };
 
@@ -29,11 +33,13 @@ const TRADES: Trade[] = [
 ];
 
 export function RecentTrades() {
+  const t = useTranslator();
+
   return (
     <section className="bg-bg-soft border border-line rounded-lg overflow-hidden">
       <header className="flex items-center justify-between px-4 py-3 border-b border-line">
         <h2 className="text-[11px] uppercase tracking-[0.18em] text-fg-faint">
-          Recent Trades
+          {t("trade.recentTrades.title")}
         </h2>
         <div className="flex items-center gap-1.5 text-[11px] text-fg-faint">
           <span
@@ -45,22 +51,22 @@ export function RecentTrades() {
       </header>
 
       <div className="grid grid-cols-3 px-4 py-2 text-[10px] uppercase tracking-[0.14em] text-fg-faint">
-        <div>Price</div>
-        <div className="text-right">Amount</div>
-        <div className="text-right">Time</div>
+        <div>{t("trade.recentTrades.price")}</div>
+        <div className="text-right">{t("trade.recentTrades.amount")}</div>
+        <div className="text-right">{t("trade.recentTrades.time")}</div>
       </div>
 
       <div className="font-mono text-[13px] leading-tight">
-        {TRADES.map((t, i) => (
+        {TRADES.map((trade, i) => (
           <div
             key={i}
             className="grid grid-cols-3 px-4 py-1 hover:bg-white/[0.02] cursor-pointer"
           >
-            <div className={`tnum ${t.side === "buy" ? "text-buy" : "text-sell"}`}>
-              {t.price}
+            <div className={`tnum ${trade.side === "buy" ? "text-buy" : "text-sell"}`}>
+              {trade.price}
             </div>
-            <div className="text-right tnum text-fg-dim">{t.amount}</div>
-            <div className="text-right tnum text-fg-faint">{t.time}</div>
+            <div className="text-right tnum text-fg-dim">{trade.amount}</div>
+            <div className="text-right tnum text-fg-faint">{trade.time}</div>
           </div>
         ))}
       </div>

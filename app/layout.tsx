@@ -3,6 +3,7 @@ import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
 
 import { Header } from "@/app/components/Header";
 import { Providers } from "@/app/providers";
+import { getRequestLocale } from "@/lib/locale-server";
 import "./globals.css";
 
 const sans = Space_Grotesk({
@@ -37,19 +38,24 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Locale is cookie-driven (see lib/locale-server.ts) — the URL never carries
+  // it. We resolve it once here so `<html lang>` is correct on first paint and
+  // the Header can render its switcher in the right state without flashing.
+  const locale = await getRequestLocale();
+
   return (
     <html
-      lang="en"
+      lang={locale}
       className={`${sans.variable} ${mono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-bg text-fg font-sans">
         <Providers>
-          <Header />
+          <Header initialLocale={locale} />
           <main className="flex-1">{children}</main>
         </Providers>
       </body>

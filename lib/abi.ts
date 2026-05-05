@@ -59,6 +59,31 @@ export const ERC20_ABI = [
 ] as const;
 
 /**
+ * Uniswap Permit2 — only the read-side fragment we need from the order book to
+ * gauge whether a maker still has enough allowance left to fill a posted order.
+ *
+ * `allowance(owner, token, spender)` returns the packed
+ * (uint160 amount, uint48 expiration, uint48 nonce) tuple.
+ */
+export const PERMIT2_ABI = [
+  {
+    type: "function",
+    name: "allowance",
+    stateMutability: "view",
+    inputs: [
+      { name: "owner", type: "address" },
+      { name: "token", type: "address" },
+      { name: "spender", type: "address" },
+    ],
+    outputs: [
+      { name: "amount", type: "uint160" },
+      { name: "expiration", type: "uint48" },
+      { name: "nonce", type: "uint48" },
+    ],
+  },
+] as const;
+
+/**
  * MockERC20 deployed on Sepolia. Adds public `mint(to, amount)` for faucet use.
  * NOT present on mainnet (production tokens are real ERC-20s without mint).
  */

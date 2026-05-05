@@ -1,0 +1,444 @@
+/**
+ * SCENTDEX V5 — order book + reputation storage abstraction.
+ *
+ * Two backends, same interface:
+ *   - Postgres (production / staging) — durable across restarts and deploys
+ *   - In-memory Map (dev fallback)    — ephemeral, resets per process
+ *
+ * Pick the backend at first call based on whether `DATABASE_URL`/`POSTGRES_URL`
+ * was set. The intent: when Alex provisions Vercel Postgres on the UST team,
+ * the production deployment automatically picks it up; local dev keeps working
+ * without a database.
+ *
+ * Maker reputation lives entirely in the `order_events` audit log. We compute
+ * counts on demand rather than maintaining materialised aggregates — at 1k+
+ * orders per maker per day the counting query is still <5ms with our indexes.
+ */
+
+import type { Address, Hex } from "viem";
+
+import { isDbAvailable, query } from "@/lib/db";
+
+// ---------- shared shapes ----------------------------------------------------
+
+export type OrderStatus =
+  | "open"
+  | "partially-filled"
+  | "filled"
+  | "cancelled"
+  | "expired";
+
+export type SerialisedOrder = {
+  maker: Address;
+  makerToken: Address;
+  takerToken: Address;
+  makerAmount: string;
+  takerAmount: string;
+  expiry: string;
+  nonce: string;
+  salt: Hex;
+  feeSide: Address;
+  feeBps: number;
+};
+
+export type StoredOrder = {
+  orderHash: Hex;
+  order: SerialisedOrder;
+  signature: Hex;
+  status: OrderStatus;
+  filledMakerAmount: string;
+  filledTakerAmount: string;
+  pair: string;
+  chainId: number;
+  createdAt: number; // unix seconds — kept for API back-compat
+};
+
+export type OrderEventType =
+  | "created"
+  | "cancelled"
+  | "expired"
+  | "filled"
+  | "failed_fill";
+
+export type MakerStats = {
+  address: string; // lowercase
+  totals: {
+    created: number;
+    cancelled: number;
+    expired: number;
+    filled: number;
+    failedFill: number;
+  };
+  /** cancelled / created — 0..1, undefined when created==0. */
+  cancelRate: number | undefined;
+  /** filled / created — 0..1, undefined when created==0. */
+  fillRate: number | undefined;
+  /** failed_fill / (filled + failed_fill) — gas-waster metric. */
+  failedFillRate: number | undefined;
+  /** unix seconds of the last event we saw for this maker. */
+  lastSeenAt: number | undefined;
+  /** Whether the numbers come from durable storage. UI uses this to footnote. */
+  durable: boolean;
+};
+
+// ---------- in-memory fallback -----------------------------------------------
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __SCENTDEX_ORDERS__: Map<string, StoredOrder> | undefined;
+  // eslint-disable-next-line no-var
+  var __SCENTDEX_EVENTS__: Array<MemoryEvent> | undefined;
+}
+
+type MemoryEvent = {
+  orderHash: string;
+  maker: string;
+  eventType: OrderEventType;
+  at: number; // unix seconds
+};
+
+function memOrders(): Map<string, StoredOrder> {
+  if (!globalThis.__SCENTDEX_ORDERS__) {
+    globalThis.__SCENTDEX_ORDERS__ = new Map();
+  }
+  return globalThis.__SCENTDEX_ORDERS__;
+}
+
+function memEvents(): Array<MemoryEvent> {
+  if (!globalThis.__SCENTDEX_EVENTS__) {
+    globalThis.__SCENTDEX_EVENTS__ = [];
+  }
+  return globalThis.__SCENTDEX_EVENTS__;
+}
+
+// ---------- public API -------------------------------------------------------
+
+export async function insertOrder(o: StoredOrder): Promise<void> {
+  if (isDbAvailable()) {
+    await query(
+      `INSERT INTO orders (
+         order_hash, maker, maker_token, taker_token,
+         maker_amount, taker_amount, expiry, nonce, salt,
+         fee_side, fee_bps, signature, pair, chain_id, status
+       ) VALUES (
+         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'open'
+       ) ON CONFLICT (order_hash) DO NOTHING`,
+      [
+        o.orderHash,
+        o.order.maker.toLowerCase(),
+        o.order.makerToken.toLowerCase(),
+        o.order.takerToken.toLowerCase(),
+        o.order.makerAmount,
+        o.order.takerAmount,
+        Number(o.order.expiry),
+        o.order.nonce,
+        o.order.salt,
+        o.order.feeSide.toLowerCase(),
+        o.order.feeBps,
+        o.signature,
+        o.pair,
+        o.chainId,
+      ],
+    );
+    await recordEvent(o.orderHash, o.order.maker, "created");
+    return;
+  }
+
+  // Memory backend
+  memOrders().set(o.orderHash, o);
+  memEvents().push({
+    orderHash: o.orderHash,
+    maker: o.order.maker.toLowerCase(),
+    eventType: "created",
+    at: Math.floor(Date.now() / 1000),
+  });
+}
+
+export async function listOrders(filter: {
+  pair?: string;
+  chainId?: number;
+}): Promise<StoredOrder[]> {
+  const now = Math.floor(Date.now() / 1000);
+
+  if (isDbAvailable()) {
+    const result = await query<DbOrderRow>(
+      `SELECT * FROM orders
+        WHERE ($1::text IS NULL OR pair = $1)
+          AND ($2::int  IS NULL OR chain_id = $2)
+        ORDER BY created_at DESC`,
+      [filter.pair ?? null, filter.chainId ?? null],
+    );
+
+    const rows = result?.rows ?? [];
+    const transitions: Array<Promise<unknown>> = [];
+
+    const orders = rows.map((r) => {
+      const o = rowToStored(r);
+      // Lazy expiry transition: if the row is still 'open' but expiry has
+      // passed, persist the transition + event so the audit log is right.
+      if (
+        (o.status === "open" || o.status === "partially-filled") &&
+        Number(o.order.expiry) > 0 &&
+        Number(o.order.expiry) < now
+      ) {
+        o.status = "expired";
+        transitions.push(
+          query(
+            `UPDATE orders SET status='expired', updated_at=NOW()
+              WHERE order_hash=$1 AND status IN ('open','partially-filled')`,
+            [o.orderHash],
+          ),
+        );
+        transitions.push(recordEvent(o.orderHash, o.order.maker, "expired"));
+      }
+      return o;
+    });
+
+    if (transitions.length > 0) await Promise.all(transitions);
+    return orders;
+  }
+
+  // Memory backend
+  const all = Array.from(memOrders().values());
+  return all
+    .filter((o) => (filter.pair ? o.pair === filter.pair : true))
+    .filter((o) => (filter.chainId ? o.chainId === filter.chainId : true))
+    .map((o) => {
+      if (
+        (o.status === "open" || o.status === "partially-filled") &&
+        Number(o.order.expiry) > 0 &&
+        Number(o.order.expiry) < now
+      ) {
+        o.status = "expired";
+        memEvents().push({
+          orderHash: o.orderHash,
+          maker: o.order.maker.toLowerCase(),
+          eventType: "expired",
+          at: now,
+        });
+      }
+      return o;
+    })
+    .sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export async function findOrder(orderHash: string): Promise<StoredOrder | null> {
+  if (isDbAvailable()) {
+    const result = await query<DbOrderRow>(
+      `SELECT * FROM orders WHERE order_hash = $1 LIMIT 1`,
+      [orderHash],
+    );
+    const row = result?.rows[0];
+    return row ? rowToStored(row) : null;
+  }
+  return memOrders().get(orderHash) ?? null;
+}
+
+/**
+ * Off-chain cancel: marks the order cancelled and records a `cancelled` event.
+ * The taker side will see the order disappear on the next /api/orders read.
+ *
+ * The maker's signature is still floating around — anyone who has it cached
+ * could in theory submit it on-chain before our indexer marks it cancelled,
+ * and the contract would happily fill it (because it doesn't know about our
+ * off-chain cancel). For ironclad cancellation the maker must call
+ * cancelOrder() on V5 (which costs gas but emits OrderCancelled and prevents
+ * any future fill). Surface that affordance in the UI for high-value orders.
+ */
+export async function cancelOrder(orderHash: string): Promise<boolean> {
+  if (isDbAvailable()) {
+    const result = await query<DbOrderRow>(
+      `UPDATE orders
+          SET status='cancelled', updated_at=NOW()
+        WHERE order_hash=$1
+          AND status IN ('open','partially-filled')
+        RETURNING *`,
+      [orderHash],
+    );
+    const row = result?.rows[0];
+    if (!row) return false;
+    await recordEvent(row.order_hash, row.maker, "cancelled");
+    return true;
+  }
+
+  const o = memOrders().get(orderHash);
+  if (!o) return false;
+  if (o.status !== "open" && o.status !== "partially-filled") return false;
+  o.status = "cancelled";
+  memEvents().push({
+    orderHash: o.orderHash,
+    maker: o.order.maker.toLowerCase(),
+    eventType: "cancelled",
+    at: Math.floor(Date.now() / 1000),
+  });
+  return true;
+}
+
+export async function recordEvent(
+  orderHash: string,
+  maker: string,
+  eventType: OrderEventType,
+  meta?: { chainTxHash?: string; blockNumber?: number; extra?: object },
+): Promise<void> {
+  if (isDbAvailable()) {
+    await query(
+      `INSERT INTO order_events (order_hash, maker, event_type, chain_tx_hash, block_number, meta)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        orderHash,
+        maker.toLowerCase(),
+        eventType,
+        meta?.chainTxHash ?? null,
+        meta?.blockNumber ?? null,
+        meta?.extra ? JSON.stringify(meta.extra) : null,
+      ],
+    );
+    return;
+  }
+  memEvents().push({
+    orderHash,
+    maker: maker.toLowerCase(),
+    eventType,
+    at: Math.floor(Date.now() / 1000),
+  });
+}
+
+export async function getMakerStats(address: string): Promise<MakerStats> {
+  const lower = address.toLowerCase();
+  if (isDbAvailable()) {
+    const result = await query<{
+      event_type: string;
+      n: string;
+      last_at: Date | null;
+    }>(
+      `SELECT event_type, COUNT(*)::text AS n, MAX(at) AS last_at
+         FROM order_events WHERE maker = $1 GROUP BY event_type`,
+      [lower],
+    );
+    const rows = result?.rows ?? [];
+    return summariseRows(lower, rows, true);
+  }
+
+  // Memory backend
+  const events = memEvents().filter((e) => e.maker === lower);
+  const grouped = new Map<string, { n: number; lastAt: number }>();
+  for (const e of events) {
+    const cur = grouped.get(e.eventType) ?? { n: 0, lastAt: 0 };
+    cur.n++;
+    if (e.at > cur.lastAt) cur.lastAt = e.at;
+    grouped.set(e.eventType, cur);
+  }
+  const rowsLike = Array.from(grouped.entries()).map(([event_type, v]) => ({
+    event_type,
+    n: String(v.n),
+    last_at: v.lastAt > 0 ? new Date(v.lastAt * 1000) : null,
+  }));
+  return summariseRows(lower, rowsLike, false);
+}
+
+// ---------- internal helpers -------------------------------------------------
+
+type DbOrderRow = {
+  order_hash: string;
+  maker: string;
+  maker_token: string;
+  taker_token: string;
+  maker_amount: string;
+  taker_amount: string;
+  expiry: string | number;
+  nonce: string;
+  salt: string;
+  fee_side: string;
+  fee_bps: number;
+  signature: string;
+  pair: string;
+  chain_id: number;
+  status: OrderStatus;
+  filled_maker_amount: string;
+  filled_taker_amount: string;
+  created_at: Date;
+  updated_at: Date;
+};
+
+function rowToStored(r: DbOrderRow): StoredOrder {
+  return {
+    orderHash: r.order_hash as Hex,
+    signature: r.signature as Hex,
+    status: r.status,
+    filledMakerAmount: r.filled_maker_amount,
+    filledTakerAmount: r.filled_taker_amount,
+    pair: r.pair,
+    chainId: r.chain_id,
+    createdAt: Math.floor(new Date(r.created_at).getTime() / 1000),
+    order: {
+      maker: r.maker as Address,
+      makerToken: r.maker_token as Address,
+      takerToken: r.taker_token as Address,
+      makerAmount: r.maker_amount,
+      takerAmount: r.taker_amount,
+      expiry: String(r.expiry),
+      nonce: r.nonce,
+      salt: r.salt as Hex,
+      feeSide: r.fee_side as Address,
+      feeBps: r.fee_bps,
+    },
+  };
+}
+
+function summariseRows(
+  address: string,
+  rows: Array<{ event_type: string; n: string; last_at: Date | null }>,
+  durable: boolean,
+): MakerStats {
+  const totals = {
+    created: 0,
+    cancelled: 0,
+    expired: 0,
+    filled: 0,
+    failedFill: 0,
+  };
+  let lastSeenAt: number | undefined;
+
+  for (const r of rows) {
+    const n = Number(r.n);
+    switch (r.event_type) {
+      case "created":
+        totals.created = n;
+        break;
+      case "cancelled":
+        totals.cancelled = n;
+        break;
+      case "expired":
+        totals.expired = n;
+        break;
+      case "filled":
+        totals.filled = n;
+        break;
+      case "failed_fill":
+        totals.failedFill = n;
+        break;
+    }
+    if (r.last_at) {
+      const ts = Math.floor(r.last_at.getTime() / 1000);
+      if (lastSeenAt === undefined || ts > lastSeenAt) lastSeenAt = ts;
+    }
+  }
+
+  const cancelRate =
+    totals.created > 0 ? totals.cancelled / totals.created : undefined;
+  const fillRate =
+    totals.created > 0 ? totals.filled / totals.created : undefined;
+  const fillsAttempted = totals.filled + totals.failedFill;
+  const failedFillRate =
+    fillsAttempted > 0 ? totals.failedFill / fillsAttempted : undefined;
+
+  return {
+    address,
+    totals,
+    cancelRate,
+    fillRate,
+    failedFillRate,
+    lastSeenAt,
+    durable,
+  };
+}

@@ -4,6 +4,7 @@ import {
   SignConfirmModal,
   type SignConfirmContext,
 } from "@/app/components/SignConfirmModal";
+import { useTranslator } from "@/lib/locale-context";
 import { SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
 import {
   buildAmounts,
@@ -21,6 +22,7 @@ type Side = "buy" | "sell";
 type Expiry = "1h" | "1d" | "1w" | "custom";
 
 export function PlaceOrder({ pair }: { pair: Pair }) {
+  const t = useTranslator();
   const [side, setSide] = useState<Side>("sell");
   const [price, setPrice] = useState("");
   const [amount, setAmount] = useState("");
@@ -61,15 +63,15 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
 
   // -- Reasons we can't sign yet ---------------------------------------
   const reasons: string[] = [];
-  if (!isConnected) reasons.push("Connect wallet");
-  if (!dexAddress) reasons.push("Switch to a supported network");
+  if (!isConnected) reasons.push(t("trade.placeOrder.connectWallet"));
+  if (!dexAddress) reasons.push(t("trade.placeOrder.wrongNetwork"));
   if (
     dexAddress &&
     (!baseToken.addresses[chainId] || !quoteToken.addresses[chainId])
   )
-    reasons.push("Pair not available on this network");
-  if (!price || Number(price) <= 0) reasons.push("Enter a price");
-  if (!amount || Number(amount) <= 0) reasons.push("Enter an amount");
+    reasons.push(t("trade.placeOrder.pairNotAvailable"));
+  if (!price || Number(price) <= 0) reasons.push(t("trade.placeOrder.enterPrice"));
+  if (!amount || Number(amount) <= 0) reasons.push(t("trade.placeOrder.enterAmount"));
   const canSign = reasons.length === 0;
 
   function startSign() {
@@ -83,7 +85,7 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
       price,
     });
     if (!amounts) {
-      setLastResult({ ok: false, error: "Could not build order amounts" });
+      setLastResult({ ok: false, error: t("trade.placeOrder.couldNotBuild") });
       return;
     }
 
@@ -177,7 +179,7 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
     <section className="bg-bg-soft border border-line rounded-lg overflow-hidden flex flex-col">
       <header className="flex items-center justify-between px-4 py-3 border-b border-line">
         <h2 className="text-[11px] uppercase tracking-[0.18em] text-fg-faint">
-          Place Order
+          {t("trade.placeOrder.title")}
         </h2>
         <div className="flex items-center gap-1 text-[11px] font-mono text-fg-faint">
           <kbd className="px-1.5 py-0.5 border border-line rounded">B</kbd>
@@ -197,7 +199,7 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
                 : "bg-white/[0.03] text-fg-dim hover:text-fg"
             }`}
           >
-            Buy {pair.base}
+            {t("trade.placeOrder.buy").replace("{base}", pair.base)}
           </button>
           <button
             onClick={() => setSide("sell")}
@@ -207,11 +209,11 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
                 : "bg-white/[0.03] text-fg-dim hover:text-fg"
             }`}
           >
-            Sell {pair.base}
+            {t("trade.placeOrder.sell").replace("{base}", pair.base)}
           </button>
         </div>
 
-        <Field label="Price" suffix={pair.quote}>
+        <Field label={t("trade.placeOrder.price")} suffix={pair.quote}>
           <input
             inputMode="decimal"
             placeholder="0.00"
@@ -221,7 +223,7 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
           />
         </Field>
 
-        <Field label="Amount" suffix={pair.base}>
+        <Field label={t("trade.placeOrder.amount")} suffix={pair.base}>
           <input
             inputMode="decimal"
             placeholder="0.00"
@@ -244,7 +246,7 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
 
         <div>
           <div className="text-[10px] uppercase tracking-[0.14em] text-fg-faint mb-2">
-            Expires
+            {t("trade.placeOrder.expires")}
           </div>
           <div className="grid grid-cols-4 gap-2">
             {(["1h", "1d", "1w", "custom"] as const).map((opt) => (
@@ -265,18 +267,13 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
 
         {/* Summary */}
         <div className="mt-2 px-3 py-3 rounded-md bg-white/[0.015] border border-line space-y-2 text-[13px]">
-          <Row k="Total" v={`${fmtNum(totals.total)} ${pair.quote}`} />
+          <Row k={t("trade.placeOrder.total")} v={`${fmtNum(totals.total)} ${pair.quote}`} />
           <Row
-            k={
-              <>
-                Protocol fee ({(cfg.feeBps / 100).toFixed(0)}%){" "}
-                <span className="text-fg-faint">(maker)</span>
-              </>
-            }
+            k={t("trade.placeOrder.makerFee").replace("{bps}", (cfg.feeBps / 100).toFixed(0))}
             v={`${fmtNum(totals.fee)} ${pair.quote}`}
           />
           <Row
-            k="You receive (at least)"
+            k={t("trade.placeOrder.youReceive")}
             v={`${fmtNum(totals.receive)} ${pair.quote}`}
             dim
           />
@@ -303,7 +300,11 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
           className="mt-2 w-full py-3 rounded-md bg-accent text-bg font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
           title={reasons.join(" · ")}
         >
-          {!canSign ? reasons[0] : signing ? "Waiting for wallet…" : "Sign Order"}
+          {!canSign
+            ? reasons[0]
+            : signing
+            ? t("trade.placeOrder.waitingForWallet")
+            : t("trade.placeOrder.signOrder")}
         </button>
       </div>
 

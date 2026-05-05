@@ -1,9 +1,15 @@
 "use client";
 
+import { useOrderFillability } from "@/lib/hooks/useOrderFillability";
+import {
+  classifyCancelRate,
+  useMakerStats,
+} from "@/lib/hooks/useMakerStats";
 import { TOKENS, type Pair } from "@/lib/tokens";
 import { useEffect, useMemo, useState } from "react";
 import { formatUnits, type Address } from "viem";
 import { useChainId } from "wagmi";
+import { useTranslator } from "@/lib/locale-context";
 
 /**
  * Order book — fetches signed orders from /api/orders, derives bids/asks
@@ -35,9 +41,18 @@ type ApiOrder = {
   };
 };
 
-type Row = { price: number; amount: number; total: number; partial: boolean };
+type Row = {
+  price: number;
+  amount: number;
+  total: number;
+  partial: boolean;
+  /** All makers contributing to this aggregated price level. Used to
+   * compute reputation hints (e.g. "⚠ frequent canceller on this row"). */
+  makers: Address[];
+};
 
 export function OrderBook({ pair }: { pair: Pair }) {
+  const t = useTranslator();
   const chainId = useChainId();
   const [orders, setOrders] = useState<ApiOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,18 +85,42 @@ export function OrderBook({ pair }: { pair: Pair }) {
     };
   }, [pairKey]);
 
-  const { asks, bids, midPrice, spread, spreadBps } = useMemo(
-    () => deriveBook(orders, pair, chainId),
-    [orders, pair, chainId],
+  // Live "is this order actually fillable right now?" check.
+  // Reads each maker's balance + Permit2 allowance via multicall and hides
+  // any order where either has dropped below the sell amount, so takers
+  // never burn gas on an order that's already dead.
+  const fillability = useOrderFillability(orders);
+
+  const fillableOrders = useMemo(
+    () =>
+      orders.filter(
+        (o) => fillability.status[o.orderHash] !== "unfillable",
+      ),
+    [orders, fillability.status],
   );
 
-  const empty = orders.length === 0;
+  const { asks, bids, midPrice, spread, spreadBps } = useMemo(
+    () => deriveBook(fillableOrders, pair, chainId),
+    [fillableOrders, pair, chainId],
+  );
+
+  // Pull reputation for every maker visible in the (post-filter) book so we
+  // can warn buyers about frequent cancellers before they spend gas.
+  const visibleMakers = useMemo(() => {
+    const set = new Set<Address>();
+    for (const r of asks) for (const m of r.makers) set.add(m);
+    for (const r of bids) for (const m of r.makers) set.add(m);
+    return Array.from(set);
+  }, [asks, bids]);
+  const { stats: makerStats } = useMakerStats(visibleMakers);
+
+  const empty = fillableOrders.length === 0;
 
   return (
     <section className="bg-bg-soft border border-line rounded-lg overflow-hidden">
       <header className="flex items-center justify-between px-4 py-3 border-b border-line">
         <h2 className="text-[11px] uppercase tracking-[0.18em] text-fg-faint">
-          Order Book
+          {t("trade.orderBook.title")}
         </h2>
         <div className="text-[11px] text-fg-faint font-mono">
           {loading ? "loading…" : empty ? "empty" : "aggregated"}
@@ -89,21 +128,24 @@ export function OrderBook({ pair }: { pair: Pair }) {
       </header>
 
       <div className="grid grid-cols-3 px-4 py-2 text-[10px] uppercase tracking-[0.14em] text-fg-faint">
-        <div>Price ({pair.quote})</div>
-        <div className="text-right">Amount ({pair.base})</div>
-        <div className="text-right">Total ({pair.base})</div>
+        <div>{t("trade.placeOrder.price")} ({pair.quote})</div>
+        <div className="text-right">{t("trade.placeOrder.amount")} ({pair.base})</div>
+        <div className="text-right">{t("trade.placeOrder.total")} ({pair.base})</div>
       </div>
 
       {empty && !loading ? (
-        <div className="px-4 py-12 text-center text-[13px] text-fg-faint">
-          No orders for this pair yet.
-          <br />
-          Be the first to place a signed order.
+        <div className="px-4 py-12 text-center text-[13px] text-fg-faint whitespace-pre-line">
+          {t("trade.orderBook.noOrders")}
         </div>
       ) : (
         <div className="font-mono text-[13px] leading-tight">
           {asks.map((r, i) => (
-            <BookRow key={`ask-${i}`} row={r} side="sell" />
+            <BookRow
+              key={`ask-${i}`}
+              row={r}
+              side="sell"
+              makerStats={makerStats}
+            />
           ))}
 
           <div className="flex items-center justify-between px-4 py-3 border-y border-line bg-white/[0.015]">
@@ -111,7 +153,7 @@ export function OrderBook({ pair }: { pair: Pair }) {
               {midPrice ? midPrice.toFixed(4) : "—"}
             </span>
             <span className="text-[11px] text-fg-faint">
-              Spread{" "}
+              {t("trade.orderBook.spread")}{" "}
               <span className="tnum text-fg-dim">
                 {spread ? spread.toFixed(4) : "—"}
               </span>{" "}
@@ -122,17 +164,73 @@ export function OrderBook({ pair }: { pair: Pair }) {
           </div>
 
           {bids.map((r, i) => (
-            <BookRow key={`bid-${i}`} row={r} side="buy" />
+            <BookRow
+              key={`bid-${i}`}
+              row={r}
+              side="buy"
+              makerStats={makerStats}
+            />
           ))}
         </div>
       )}
+
+      {fillability.unfillableCount > 0 ? (
+        <div
+          className="px-4 py-2 text-[11px] text-fg-faint border-t border-line bg-white/[0.015] flex items-center gap-1.5"
+          title={t("trade.orderBook.hiddenTooltip")}
+        >
+          <span aria-hidden="true">⚠</span>
+          <span>
+            {t("trade.orderBook.hidden")
+              .replace("{count}", String(fillability.unfillableCount))
+              .replace("{orders}", fillability.unfillableCount === 1 ? "order" : "orders")}
+          </span>
+        </div>
+      ) : null}
     </section>
   );
 }
 
-function BookRow({ row, side }: { row: Row; side: "buy" | "sell" }) {
+function BookRow({
+  row,
+  side,
+  makerStats,
+}: {
+  row: Row;
+  side: "buy" | "sell";
+  makerStats: Record<string, { cancelRate: number | undefined }>;
+}) {
   const colour = side === "buy" ? "text-buy" : "text-sell";
   const bg = side === "buy" ? "bg-buy-soft" : "bg-sell-soft";
+
+  // Reputation roll-up: take the worst (highest) cancel rate among makers
+  // contributing to this aggregated price level.
+  let worstCancelRate: number | undefined;
+  for (const m of row.makers) {
+    const r = makerStats[m.toLowerCase()]?.cancelRate;
+    if (r === undefined) continue;
+    if (worstCancelRate === undefined || r > worstCancelRate) worstCancelRate = r;
+  }
+  const cancelClass = classifyCancelRate(worstCancelRate);
+
+  const reputationBadge =
+    cancelClass === "ok" ? null : (
+      <span
+        title={`A maker on this row has cancelled ${
+          worstCancelRate !== undefined
+            ? `${Math.round(worstCancelRate * 100)}% of their orders`
+            : "frequently"
+        } — fills here are more likely to revert.`}
+        className={`text-[9px] font-mono px-1 rounded ${
+          cancelClass === "strong"
+            ? "bg-sell/20 text-sell"
+            : "bg-amber-500/15 text-amber-300"
+        }`}
+        aria-label="frequent canceller warning"
+      >
+        ⚠
+      </span>
+    );
 
   return (
     <div className="relative grid grid-cols-3 px-4 py-1 hover:bg-white/[0.02] cursor-pointer">
@@ -148,6 +246,7 @@ function BookRow({ row, side }: { row: Row; side: "buy" | "sell" }) {
           />
         ) : null}
         <span>{row.price.toFixed(4)}</span>
+        {reputationBadge}
       </div>
       <div className="relative text-right tnum text-fg-dim">
         {row.amount.toFixed(2)}
@@ -215,6 +314,7 @@ function deriveBook(orders: ApiOrder[], pair: Pair, chainId: number) {
       amount,
       total: amount,
       partial: o.status === "partially-filled",
+      makers: [o.order.maker],
     };
     (isSell ? asks : bids).push(row);
   }

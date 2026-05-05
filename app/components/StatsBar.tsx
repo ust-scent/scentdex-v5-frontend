@@ -1,6 +1,11 @@
+"use client";
+
+import { useTranslator } from "@/lib/locale-context";
 import { feeConfig, type Pair } from "@/lib/tokens";
 
 export function StatsBar({ pair }: { pair: Pair }) {
+  const t = useTranslator();
+
   // Phase 1 placeholder data — Phase 3+ will source from indexer / on-chain reads.
   const key = `${pair.base}/${pair.quote}`;
   const STATS_BY_PAIR: Record<
@@ -69,16 +74,16 @@ export function StatsBar({ pair }: { pair: Pair }) {
             </div>
           }
         />
-        <Field label="24H Volume" value={stats.volume24h} />
-        <Field label="24H High" value={stats.high24h} mono />
-        <Field label="24H Low" value={stats.low24h} mono />
+        <Field label={t("trade.statsBar.volume24h")} value={stats.volume24h} />
+        <Field label={t("trade.statsBar.high24h")} value={stats.high24h} mono />
+        <Field label={t("trade.statsBar.low24h")} value={stats.low24h} mono />
         <Field
-          label="Maker Fee"
+          label={t("trade.statsBar.makerFee")}
           value={
             <div>
               <div className="text-fg">{(feeConfig(pair).feeBps / 100).toFixed(0)}%</div>
               <div className="text-[11px] text-fg-faint mt-0.5">
-                paid in {feeConfig(pair).feeSide} (sell side)
+                {t("trade.statsBar.makerFeeSuffix").replace("{feeSide}", feeConfig(pair).feeSide)}
               </div>
             </div>
           }
