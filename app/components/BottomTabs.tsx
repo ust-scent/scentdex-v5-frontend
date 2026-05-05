@@ -280,7 +280,6 @@ function Permit2Card({ token }: { token: Token }) {
   const s = useTokenStatus(token);
   const isApproved = s.allowance > 0n;
   const hasAddress = Boolean(s.tokenAddress);
-  const faucetEnabled = hasAddress;
 
   const state: "no-address" | "disconnected" | "approved" | "not-approved" =
     !hasAddress
@@ -321,7 +320,6 @@ function Permit2Card({ token }: { token: Token }) {
           token={token}
           status={s}
           isApproved={isApproved}
-          faucetEnabled={faucetEnabled}
         />
       )}
     </div>
@@ -358,12 +356,10 @@ function PermitBody({
   token,
   status,
   isApproved,
-  faucetEnabled,
 }: {
   token: Token;
   status: ReturnType<typeof useTokenStatus>;
   isApproved: boolean;
-  faucetEnabled: boolean;
 }) {
   const t = useTranslator();
   const balance = formatUnits(status.balance, token.decimals);
@@ -414,31 +410,9 @@ function PermitBody({
         </>
       )}
 
-      {faucetEnabled ? (
-        <div className="mt-3 pt-3 border-t border-line">
-          <div className="text-[10px] uppercase tracking-[0.14em] text-fg-faint mb-1.5">
-            Faucet
-          </div>
-          <button
-            onClick={status.mintDefault}
-            disabled={status.isMinting}
-            className="w-full py-1.5 rounded-md bg-white/[0.04] text-[12px] text-fg-dim hover:text-fg hover:bg-white/[0.08] disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {status.isMinting
-              ? t("trade.approvedTokens.minting")
-              : t("trade.approvedTokens.getMint").replace("{symbol}", token.symbol)}
-          </button>
-        </div>
-      ) : null}
-
       {status.approveError ? (
         <p className="mt-2 text-[11px] text-sell">
           {status.approveError.message.slice(0, 120)}
-        </p>
-      ) : null}
-      {status.mintError ? (
-        <p className="mt-2 text-[11px] text-sell">
-          {status.mintError.message.slice(0, 120)}
         </p>
       ) : null}
     </>
