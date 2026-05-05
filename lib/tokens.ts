@@ -24,7 +24,7 @@ export const TOKENS: Token[] = [
     decimals: 18,
     addresses: {
       1: undefined,
-      11155111: "0xd7Fb54E63ab15df8B08dDAaD6AF7186fe033b8bB",
+      11155111: "0xE1D85C9b49e55b03734d5D82c8E8a56ed657b965",
     },
     accentClass: "bg-amber-500",
   },
@@ -34,7 +34,7 @@ export const TOKENS: Token[] = [
     decimals: 18,
     addresses: {
       1: undefined,
-      11155111: "0x93db44f7dad70522D03E3CB7C393171dd24c8dea",
+      11155111: "0x23823D31CBF92D9d360cf553F9E20E97b7846E33",
     },
     accentClass: "bg-blue-500",
   },
@@ -44,7 +44,7 @@ export const TOKENS: Token[] = [
     decimals: 6,
     addresses: {
       1: undefined,
-      11155111: "0xd6E181384856C0679158b5710E567C0FCe54c21f",
+      11155111: "0xaD9D818043B1bc946A088793B2c8e3694847cF7d",
     },
     accentClass: "bg-emerald-500",
   },
