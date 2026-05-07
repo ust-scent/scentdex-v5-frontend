@@ -1,7 +1,7 @@
 import type { Address } from "viem";
 
 export type Token = {
-  symbol: "SCENT" | "JPYC" | "USDT" | "SDO";
+  symbol: "testSCENT" | "testJPYC" | "testUSDT" | "testSDO";
   name: string;
   decimals: number;
   /** Per-chain ERC-20 address. Mainnet: production; Sepolia: MockERC20 deploy. */
@@ -11,7 +11,7 @@ export type Token = {
 };
 
 /**
- * SCENT, JPYC, USDT — the three tokens supported at SCENTDEX V5 launch.
+ * testSCENT, testJPYC, testUSDT — the three tokens supported at SCENTDEX V5 launch.
  *
  * Sepolia addresses are MockERC20 deployments with public `mint(to, amount)`
  * for faucet use. Run `scripts/deploy-sepolia.ts` in the scentdex-v5 repo
@@ -19,42 +19,42 @@ export type Token = {
  */
 export const TOKENS: Token[] = [
   {
-    symbol: "SCENT",
-    name: "Scent Token",
+    symbol: "testSCENT",
+    name: "Test Scent Token",
     decimals: 18,
     addresses: {
       1: undefined,
-      11155111: "0xE1D85C9b49e55b03734d5D82c8E8a56ed657b965",
+      11155111: "0x9366C55CAEb6843E1CF596EbB515e2f94A9e8043",
     },
     accentClass: "bg-amber-500",
   },
   {
-    symbol: "JPYC",
-    name: "JPY Coin",
+    symbol: "testJPYC",
+    name: "Test JPY Coin",
     decimals: 18,
     addresses: {
       1: undefined,
-      11155111: "0x23823D31CBF92D9d360cf553F9E20E97b7846E33",
+      11155111: "0x0174899c27d8315294f230aC7f72913718065CC2",
     },
     accentClass: "bg-blue-500",
   },
   {
-    symbol: "USDT",
-    name: "Tether USD",
+    symbol: "testUSDT",
+    name: "Test Tether USD",
     decimals: 6,
     addresses: {
       1: undefined,
-      11155111: "0xaD9D818043B1bc946A088793B2c8e3694847cF7d",
+      11155111: "0xd2fe6DD909503829E3638F68155Fed3D7a01988d",
     },
     accentClass: "bg-emerald-500",
   },
   {
-    symbol: "SDO",
-    name: "Scent Demo Token",
+    symbol: "testSDO",
+    name: "Test Scent Demo Token",
     decimals: 18,
     addresses: {
       1: undefined,
-      11155111: "0x0E9b767f23d7dD1b318027d3413C9b032ffe0761",
+      11155111: "0xB402dFBb233b231076609aB766B829336492D99C",
     },
     accentClass: "bg-fuchsia-500",
   },
@@ -66,10 +66,10 @@ export type Pair = {
 };
 
 export const PAIRS: Pair[] = [
-  { base: "SCENT", quote: "JPYC" },
-  { base: "SCENT", quote: "USDT" },
-  { base: "SDO", quote: "USDT" },
-  { base: "SDO", quote: "SCENT" },
+  { base: "testSCENT", quote: "testJPYC" },
+  { base: "testSCENT", quote: "testUSDT" },
+  { base: "testSDO", quote: "testUSDT" },
+  { base: "testSDO", quote: "testSCENT" },
 ];
 
 /**
@@ -87,10 +87,10 @@ export type PairFeeConfig = {
 };
 
 export const PAIR_CONFIG: Record<string, PairFeeConfig> = {
-  "SCENT/JPYC": { feeBps: 1000, feeSide: "SCENT" },
-  "SCENT/USDT": { feeBps: 1000, feeSide: "SCENT" },
-  "SDO/USDT": { feeBps: 2000, feeSide: "SDO" },
-  "SDO/SCENT": { feeBps: 2000, feeSide: "SDO" },
+  "testSCENT/testJPYC": { feeBps: 1000, feeSide: "testSCENT" },
+  "testSCENT/testUSDT": { feeBps: 1000, feeSide: "testSCENT" },
+  "testSDO/testUSDT": { feeBps: 2000, feeSide: "testSDO" },
+  "testSDO/testSCENT": { feeBps: 2000, feeSide: "testSDO" },
 };
 
 export function pairKey(pair: Pair): string {

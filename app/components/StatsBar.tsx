@@ -19,40 +19,40 @@ export function StatsBar({ pair }: { pair: Pair }) {
       low24h: string;
     }
   > = {
-    "SCENT/JPYC": {
+    "testSCENT/testJPYC": {
       price: "0.0600",
       change: "+2.84%",
       positive: true,
-      volume24h: "1.24M JPYC",
+      volume24h: "1.24M testJPYC",
       high24h: "0.0618",
       low24h: "0.0584",
     },
-    "SCENT/USDT": {
+    "testSCENT/testUSDT": {
       price: "0.000420",
       change: "-1.21%",
       positive: false,
-      volume24h: "8.7K USDT",
+      volume24h: "8.7K testUSDT",
       high24h: "0.000432",
       low24h: "0.000415",
     },
-    "SDO/USDT": {
+    "testSDO/testUSDT": {
       price: "0.0010",
       change: "+5.42%",
       positive: true,
-      volume24h: "210 USDT",
+      volume24h: "210 testUSDT",
       high24h: "0.00104",
       low24h: "0.00096",
     },
-    "SDO/SCENT": {
+    "testSDO/testSCENT": {
       price: "2.4500",
       change: "+0.86%",
       positive: true,
-      volume24h: "12.4K SCENT",
+      volume24h: "12.4K testSCENT",
       high24h: "2.4900",
       low24h: "2.4100",
     },
   };
-  const stats = STATS_BY_PAIR[key] ?? STATS_BY_PAIR["SCENT/JPYC"];
+  const stats = STATS_BY_PAIR[key] ?? STATS_BY_PAIR["testSCENT/testJPYC"];
 
   return (
     <div className="px-3 sm:px-6 py-4 sm:py-5 border-b border-line">

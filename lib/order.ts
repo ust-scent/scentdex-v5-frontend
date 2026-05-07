@@ -137,10 +137,10 @@ export function expiryFromChoice(choice: "1h" | "1d" | "1w" | "custom", customSe
  * Side helper: convert (Buy/Sell {base}, base, quote, price, amount) into
  * the canonical (makerToken, takerToken, makerAmount, takerAmount).
  *
- * For SCENT/JPYC pair, "Sell SCENT" means maker sells SCENT for JPYC →
- * makerToken=SCENT, takerToken=JPYC, makerAmount=amount, takerAmount=amount*price.
- * "Buy SCENT" means maker offers JPYC, wants SCENT →
- * makerToken=JPYC, takerToken=SCENT, makerAmount=amount*price, takerAmount=amount.
+ * For testSCENT/testJPYC pair, "Sell testSCENT" means maker sells testSCENT for testJPYC →
+ * makerToken=testSCENT, takerToken=testJPYC, makerAmount=amount, takerAmount=amount*price.
+ * "Buy testSCENT" means maker offers testJPYC, wants testSCENT →
+ * makerToken=testJPYC, takerToken=testSCENT, makerAmount=amount*price, takerAmount=amount.
  */
 export function buildAmounts({
   side,

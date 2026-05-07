@@ -66,10 +66,10 @@ function TabBtn({
 function MyOrders() {
   const t = useTranslator();
   const orders = [
-    { pair: "SCENT/JPYC", side: "sell", price: "12.5500", amount: 800, filled: 30, status: "PartiallyFilled" },
-    { pair: "SCENT/JPYC", side: "sell", price: "12.6200", amount: 1200, filled: 0, status: "Open" },
-    { pair: "SCENT/JPYC", side: "buy", price: "12.3000", amount: 500, filled: 0, status: "Open" },
-    { pair: "SCENT/USDT", side: "sell", price: "0.0840", amount: 2500, filled: 0, status: "Open" },
+    { pair: "testSCENT/testJPYC", side: "sell", price: "12.5500", amount: 800, filled: 30, status: "PartiallyFilled" },
+    { pair: "testSCENT/testJPYC", side: "sell", price: "12.6200", amount: 1200, filled: 0, status: "Open" },
+    { pair: "testSCENT/testJPYC", side: "buy", price: "12.3000", amount: 500, filled: 0, status: "Open" },
+    { pair: "testSCENT/testUSDT", side: "sell", price: "0.0840", amount: 2500, filled: 0, status: "Open" },
   ];
 
   return (
@@ -171,12 +171,12 @@ function MyOrders() {
 function History() {
   const t = useTranslator();
   const trades = [
-    { time: "2026-05-01 10:42", pair: "SCENT/JPYC", side: "sell", amount: 240, price: "12.5500", role: "Maker", cp: "0x7a4b…2e91", fee: "24 JPYC" },
-    { time: "2026-05-01 09:18", pair: "SCENT/JPYC", side: "buy", amount: 180, price: "12.4200", role: "Taker", cp: "0xc1f0…9d2a", fee: "18 JPYC" },
-    { time: "2026-04-30 22:05", pair: "SCENT/JPYC", side: "sell", amount: 600, price: "12.4000", role: "Maker", cp: "0x2c8a…51f4", fee: "60 JPYC" },
-    { time: "2026-04-30 16:51", pair: "SCENT/USDT", side: "sell", amount: 1100, price: "0.0810", role: "Maker", cp: "0xe55d…3a02", fee: "8.91 USDT" },
-    { time: "2026-04-30 11:33", pair: "SCENT/JPYC", side: "buy", amount: 90, price: "12.5100", role: "Taker", cp: "0x09bf…cc11", fee: "11 JPYC" },
-    { time: "2026-04-29 19:12", pair: "SCENT/JPYC", side: "sell", amount: 320, price: "12.2800", role: "Maker", cp: "0x4f12…b7e3", fee: "32 JPYC" },
+    { time: "2026-05-01 10:42", pair: "testSCENT/testJPYC", side: "sell", amount: 240, price: "12.5500", role: "Maker", cp: "0x7a4b…2e91", fee: "24 testJPYC" },
+    { time: "2026-05-01 09:18", pair: "testSCENT/testJPYC", side: "buy", amount: 180, price: "12.4200", role: "Taker", cp: "0xc1f0…9d2a", fee: "18 testJPYC" },
+    { time: "2026-04-30 22:05", pair: "testSCENT/testJPYC", side: "sell", amount: 600, price: "12.4000", role: "Maker", cp: "0x2c8a…51f4", fee: "60 testJPYC" },
+    { time: "2026-04-30 16:51", pair: "testSCENT/testUSDT", side: "sell", amount: 1100, price: "0.0810", role: "Maker", cp: "0xe55d…3a02", fee: "8.91 testUSDT" },
+    { time: "2026-04-30 11:33", pair: "testSCENT/testJPYC", side: "buy", amount: 90, price: "12.5100", role: "Taker", cp: "0x09bf…cc11", fee: "11 testJPYC" },
+    { time: "2026-04-29 19:12", pair: "testSCENT/testJPYC", side: "sell", amount: 320, price: "12.2800", role: "Maker", cp: "0x4f12…b7e3", fee: "32 testJPYC" },
   ];
 
   return (
