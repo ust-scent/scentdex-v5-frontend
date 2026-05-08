@@ -32,9 +32,22 @@ CREATE TABLE IF NOT EXISTS orders (
                          CHECK (status IN ('open','partially-filled','filled','cancelled','expired')),
   filled_maker_amount    NUMERIC(78, 0) NOT NULL DEFAULT 0,
   filled_taker_amount    NUMERIC(78, 0) NOT NULL DEFAULT 0,
+  -- Per-order Permit2 PermitSingle (round-3): scopes the maker's allowance
+  -- to exactly amount=makerAmount, expiration=expiry, spender=DEX. Stored
+  -- as JSONB so the taker side can lift it verbatim into _fillOrder. NULL
+  -- means a legacy "infinite-allowance" order with no per-order permit.
+  permit_single_json     JSONB,
+  permit_signature       TEXT,
   created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Round-3 idempotent migration for installations that already have the
+-- earlier schema applied. Safe to re-run; ALTER TABLE … ADD COLUMN IF NOT
+-- EXISTS is a no-op when the column is already there.
+ALTER TABLE orders
+  ADD COLUMN IF NOT EXISTS permit_single_json JSONB,
+  ADD COLUMN IF NOT EXISTS permit_signature   TEXT;
 
 CREATE INDEX IF NOT EXISTS orders_pair_status_idx
   ON orders (pair, status);

@@ -4,29 +4,38 @@ import { useMemo } from "react";
 import { type Address, type Hex } from "viem";
 import { useChainId, useReadContracts } from "wagmi";
 
-import { ERC20_ABI, PERMIT2_ABI } from "@/lib/abi";
+import { ERC20_ABI } from "@/lib/abi";
 import { PERMIT2_ADDRESS, SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
 
 /**
  * Live "is this signed order still fillable right now?" check.
  *
- * For each open order we read, in a single multicall:
- *   1. ERC20.balanceOf(maker)         — does the maker still hold the sell side?
- *   2. Permit2.allowance(maker, makerToken, scentdexV5)
- *                                     — does Permit2 still have spend permission?
+ * Round-3 changed what "fillable" means. With per-order Permit2
+ * signatures attached to each order, the spend-allowance question is
+ * answered by the order itself (the `permitSingle + permitSignature`
+ * pair scoped to amount=makerAmount, expiration=expiry). The contract
+ * does `permit2.permit(...)` just-in-time at fill, so there's no
+ * standing Permit2 → DEX allowance to inspect.
  *
- * An order needs *both* readings ≥ makerAmount to be fillable. If either is
- * short, a taker who clicks "fill" would burn gas on a revert. The order book
- * uses the result to hide the row entirely (and tell the user how many were
- * hidden), so unsuspecting takers don't pay gas for orders that are already
- * dead in the water.
+ * What is still required at fill time, and therefore still worth
+ * checking on the order book to keep takers from burning gas:
+ *
+ *   1. ERC20.balanceOf(maker)              — does the maker still hold
+ *                                              the sell side?
+ *   2. ERC20.allowance(maker, Permit2)     — is the wallet → Permit2
+ *                                              hop still in place?
+ *
+ * If a maker revoked Permit2 from their ERC-20 after signing, or the
+ * tokens left their wallet, the order would revert at fill. The hook
+ * marks those as `unfillable`, OrderBook hides them, and BottomTabs
+ * surfaces an "Approval needed" badge so the maker can re-approve.
  *
  * Notes:
- * - Orders whose chainId != connected chain are treated as "fillable" here
- *   (we cannot read their state from this network); the OrderBook deriveBook
- *   already filters them out by token-address match before display.
- * - When reads are still loading or have errored we treat the order as
- *   fillable (i.e. fail-open) to avoid empty books on transient RPC issues.
+ *  - Orders whose chainId != connected chain are treated as "unknown"
+ *    (we cannot read their state); OrderBook's deriveBook already
+ *    filters those out by token-address match before display.
+ *  - On RPC blip / loading, we fail open ("unknown") to avoid empty
+ *    books on transient errors.
  */
 
 export type FillabilityStatus = "fillable" | "unfillable" | "unknown";
@@ -51,8 +60,8 @@ export function useOrderFillability(orders: OrderInput[]): FillabilityCheck {
   const connectedChainId = useChainId();
   const dexAddress = SCENTDEX_V5_ADDRESS[connectedChainId];
 
-  // Only orders on the currently connected chain can be checked — Permit2 +
-  // ERC20 reads target the wallet's RPC.
+  // Only orders on the currently connected chain can be checked — the ERC20
+  // reads target the wallet's RPC.
   const checkable = useMemo(
     () => orders.filter((o) => o.chainId === connectedChainId && dexAddress),
     [orders, connectedChainId, dexAddress],
@@ -62,7 +71,7 @@ export function useOrderFillability(orders: OrderInput[]): FillabilityCheck {
     if (!dexAddress) return [];
     const calls: Array<{
       address: Address;
-      abi: typeof ERC20_ABI | typeof PERMIT2_ABI;
+      abi: typeof ERC20_ABI;
       functionName: string;
       args: readonly unknown[];
       chainId: number;
@@ -76,10 +85,10 @@ export function useOrderFillability(orders: OrderInput[]): FillabilityCheck {
         chainId: connectedChainId,
       });
       calls.push({
-        address: PERMIT2_ADDRESS,
-        abi: PERMIT2_ABI,
+        address: o.order.makerToken,
+        abi: ERC20_ABI,
         functionName: "allowance",
-        args: [o.order.maker, o.order.makerToken, dexAddress],
+        args: [o.order.maker, PERMIT2_ADDRESS],
         chainId: connectedChainId,
       });
     }
@@ -87,15 +96,13 @@ export function useOrderFillability(orders: OrderInput[]): FillabilityCheck {
   }, [checkable, dexAddress, connectedChainId]);
 
   const { data, isLoading } = useReadContracts({
-    // wagmi accepts a heterogeneous tuple here; the union of ABIs is fine at
-    // runtime, but TS infers it strictly so we relax via cast.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     contracts: contracts as any,
     query: {
       enabled: contracts.length > 0,
       // Poll every 8s so the maker's "Approval needed" badge clears within
-      // one refresh window after they finish the two-step Permit2 approval,
-      // without round-tripping the server poll for the same data.
+      // one refresh window after they fix the underlying issue (rare but
+      // possible: tokens move out of the wallet, ERC-20 → Permit2 revoked).
       refetchInterval: 8000,
       refetchOnWindowFocus: true,
     },
@@ -106,8 +113,6 @@ export function useOrderFillability(orders: OrderInput[]): FillabilityCheck {
     let unfillableCount = 0;
 
     if (!data || data.length === 0) {
-      // Without read results we cannot judge — leave everything as unknown
-      // (treated as fillable downstream).
       for (const o of orders) status[o.orderHash] = "unknown";
       return {
         status,
@@ -134,21 +139,9 @@ export function useOrderFillability(orders: OrderInput[]): FillabilityCheck {
       }
 
       const balance = balanceR.result as bigint;
-      const tuple = allowanceR.result as readonly [bigint, number, number];
-      const allowAmount = BigInt(tuple[0]);
-      const allowExpiry = Number(tuple[1]);
+      const erc20Allowance = allowanceR.result as bigint;
 
-      // Permit2 reverts with `AllowanceExpired` when block.timestamp > expiration,
-      // so an expiry of 0 is "expired immediately", not "no expiry". An order
-      // is only fillable when expiration is strictly in the future. Pulling the
-      // wall-clock here is fine: `useMemo` rebuilds with the polled `data`, and
-      // the result is purely consumed downstream — no purity invariant relies
-      // on `nowSec` being identical across re-renders.
-      // eslint-disable-next-line react-hooks/purity
-      const nowSec = Math.floor(Date.now() / 1000);
-      const allowanceLive = allowExpiry > nowSec;
-
-      if (balance >= need && allowAmount >= need && allowanceLive) {
+      if (balance >= need && erc20Allowance >= need) {
         status[o.orderHash] = "fillable";
       } else {
         status[o.orderHash] = "unfillable";
@@ -156,7 +149,6 @@ export function useOrderFillability(orders: OrderInput[]): FillabilityCheck {
       }
     }
 
-    // Orders we couldn't check (different chain) — mark unknown.
     for (const o of orders) {
       if (status[o.orderHash] === undefined) status[o.orderHash] = "unknown";
     }

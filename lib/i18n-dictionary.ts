@@ -205,6 +205,7 @@ export type Dictionary = {
   "trade.placeOrder.approveAndSign": string;
   "trade.placeOrder.approvingStep1": string;
   "trade.placeOrder.approvingStep2": string;
+  "trade.placeOrder.approvingErc20": string;
   "trade.placeOrder.orderSigned": string;
   "trade.placeOrder.orderPosted": string;
 
@@ -388,15 +389,15 @@ const en: Dictionary = {
 
   // Trade page — Approved Tokens (Permit2) tab
   "trade.approvedTokens.description":
-    "Approving a token is a two-step process: first you approve Permit2 to move the token, then Permit2 grants SCENTDEX the spend allowance it needs to settle your signed orders. Both transactions happen back-to-back when you click Approve.",
+    "This tab is for status only — approvals happen automatically the first time you sign an order. Once a token is approved here, every future order is allowed to spend exactly its own makerAmount and nothing more, scoped to that order's expiry. No standing blanket allowance sits on the DEX between trades.",
   "trade.approvedTokens.learnMore": "Learn more →",
   "trade.approvedTokens.notDeployed": "Not deployed on this network.",
   "trade.approvedTokens.connectWallet":
     "Connect your wallet to view your {symbol} balance and Permit2 status.",
   "trade.approvedTokens.approved":
-    "Both legs are approved. SCENTDEX can settle your signed orders without further approvals.",
+    "Permit2 can move {symbol} from your wallet when an order you signed is filled. Each fill is bounded to the makerAmount you signed for that specific order.",
   "trade.approvedTokens.notApproved":
-    "Approve to start trading {symbol}. Two transactions: ERC-20 → Permit2, then Permit2 → SCENTDEX.",
+    "Approve to start trading {symbol}. One on-chain transaction the first time; future orders are signed off-chain.",
   "trade.approvedTokens.approve": "Approve {symbol}",
   "trade.approvedTokens.reApprove": "Re-approve",
   "trade.approvedTokens.approving": "Approving…",
@@ -413,8 +414,8 @@ const en: Dictionary = {
   "trade.approvedTokens.partialDescription":
     "Step 1 is done. One more transaction (Permit2 → SCENTDEX) is needed before fills can settle.",
   "trade.approvedTokens.statusNotApproved":
-    "Not approved yet. SCENTDEX will request approval automatically the next time you sign an order — no need to approve from this tab.",
-  "trade.approvedTokens.revoke": "Revoke approval",
+    "Not approved yet. The first time you sign a {symbol} order, SCENTDEX will request a one-time on-chain approve — no need to do it here in advance.",
+  "trade.approvedTokens.revoke": "Revoke {symbol} approval",
   "trade.approvedTokens.revoking": "Revoking…",
 
   // Trade page — MyOrders
@@ -435,9 +436,9 @@ const en: Dictionary = {
   "trade.myOrders.loading": "Loading orders…",
   "trade.myOrders.connect": "Connect your wallet to see your orders.",
   "trade.myOrders.cancelling": "Cancelling…",
-  "trade.myOrders.needsApproval": "Approval needed",
+  "trade.myOrders.needsApproval": "Cannot fill",
   "trade.myOrders.needsApprovalTooltip":
-    "This order is signed but won't fill until you approve Permit2 for {symbol} (Approved Tokens tab).",
+    "This order is signed but won't fill right now: either the {symbol} balance has dropped below makerAmount, or the wallet → Permit2 approval has been revoked. Re-approve from the Approved Tokens tab to clear it.",
 
   // Trade page — History
   "trade.history.time": "Time",
@@ -487,6 +488,7 @@ const en: Dictionary = {
   "trade.placeOrder.approveAndSign": "Approve & sign {symbol}",
   "trade.placeOrder.approvingStep1": "Approving {symbol} (1/2)…",
   "trade.placeOrder.approvingStep2": "Approving {symbol} (2/2)…",
+  "trade.placeOrder.approvingErc20": "Approving {symbol}…",
   "trade.placeOrder.orderSigned": "Order signed. Signature:",
   "trade.placeOrder.orderPosted":
     "Posted to the book. The taker side will see your order within a poll cycle.",
@@ -681,15 +683,15 @@ const ja: Dictionary = {
 
   // Trade page — Approved Tokens (Permit2) tab
   "trade.approvedTokens.description":
-    "トークン承認は2段階です。まず Permit2 にトークンの移動を許可し、次に Permit2 から SCENTDEX へ移動許可を渡します。「承認」ボタンを押すと両方が連続で実行されます（MetaMask の署名は2回）。",
+    "このタブは承認の状態確認専用です。承認は最初に注文を署名するときに自動でリクエストされます。承認後の各注文は、その注文で指定した数量・有効期限の範囲だけ DEX が引き出せます。常時残る包括承認は DEX に存在しません。",
   "trade.approvedTokens.learnMore": "詳しく →",
   "trade.approvedTokens.notDeployed": "このネットワークにはデプロイされていません。",
   "trade.approvedTokens.connectWallet":
     "ウォレットを接続すると、{symbol} の残高と承認状況を確認できます。",
   "trade.approvedTokens.approved":
-    "両方の承認が完了しています。SCENTDEX は追加承認なしで署名済み注文を約定できます。",
+    "署名した注文に応じて Permit2 が {symbol} を移動できます。各約定は、その注文で署名した makerAmount の範囲を超えません。",
   "trade.approvedTokens.notApproved":
-    "{symbol} の取引を開始するには承認が必要です。トランザクションは2回（ERC-20 → Permit2、Permit2 → SCENTDEX）。",
+    "{symbol} の取引を開始するには初回の承認が必要です。最初の注文署名時にオンチェーン1回。以降の注文はオフチェーン署名のみ。",
   "trade.approvedTokens.approve": "{symbol} を承認する",
   "trade.approvedTokens.reApprove": "再承認",
   "trade.approvedTokens.approving": "承認中…",
@@ -706,8 +708,8 @@ const ja: Dictionary = {
   "trade.approvedTokens.partialDescription":
     "ステップ 1 は完了しました。約定可能にするには、もう 1 件のトランザクション（Permit2 → SCENTDEX）が必要です。",
   "trade.approvedTokens.statusNotApproved":
-    "未承認です。次に注文に署名するときに自動で承認が要求されるので、このタブから承認する必要はありません。",
-  "trade.approvedTokens.revoke": "承認を解除",
+    "未承認です。{symbol} の注文に最初に署名するときに、オンチェーン承認 1 回が SCENTDEX から要求されます。事前にここから承認する必要はありません。",
+  "trade.approvedTokens.revoke": "{symbol} の承認を解除",
   "trade.approvedTokens.revoking": "解除中…",
 
   // Trade page — MyOrders
@@ -728,9 +730,9 @@ const ja: Dictionary = {
   "trade.myOrders.loading": "注文を読み込み中…",
   "trade.myOrders.connect": "注文を表示するにはウォレットを接続してください。",
   "trade.myOrders.cancelling": "キャンセル中…",
-  "trade.myOrders.needsApproval": "承認が必要",
+  "trade.myOrders.needsApproval": "約定不可",
   "trade.myOrders.needsApprovalTooltip":
-    "署名済みですが、{symbol} の Permit2 承認が完了するまで約定しません（「承認済みトークン」タブで承認してください）。",
+    "署名済みですが現状約定できません: {symbol} の残高が makerAmount を下回っているか、ウォレット → Permit2 の承認が解除されています。「承認済みトークン」タブから再承認してください。",
 
   // Trade page — History
   "trade.history.time": "時刻",
@@ -780,6 +782,7 @@ const ja: Dictionary = {
   "trade.placeOrder.approveAndSign": "{symbol} を承認して署名",
   "trade.placeOrder.approvingStep1": "{symbol} を承認中（1/2）…",
   "trade.placeOrder.approvingStep2": "{symbol} を承認中（2/2）…",
+  "trade.placeOrder.approvingErc20": "{symbol} を承認中…",
   "trade.placeOrder.orderSigned": "注文に署名しました。署名:",
   "trade.placeOrder.orderPosted":
     "板に投稿しました。次のポーリングでテイカー側にも表示されます。",

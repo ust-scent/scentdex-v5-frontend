@@ -3,6 +3,7 @@
 import { useTranslator } from "@/lib/locale-context";
 import { useTokenStatus } from "@/lib/hooks/useTokenStatus";
 import { useOrderFillability } from "@/lib/hooks/useOrderFillability";
+import { useWalletFills, type WalletFill } from "@/lib/hooks/useWalletFills";
 import { SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
 import { TOKENS, type Token } from "@/lib/tokens";
 import { useEffect, useMemo, useState } from "react";
@@ -484,9 +485,83 @@ function fmtAmount(n: number): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
 }
 
+// One row in the unified history view. Either an off-chain order whose
+// status terminated without a fill (cancelled / expired), or an on-chain
+// OrderFilled event the wallet was a side of.
+type HistoryItem =
+  | {
+      kind: "order";
+      key: string;
+      time: number; // unix seconds
+      pair: string;
+      side: "buy" | "sell";
+      amount: number;
+      price: number;
+      status: "cancelled" | "expired";
+    }
+  | {
+      kind: "fill";
+      key: string;
+      time: number; // unix seconds (estimated from blockNumber)
+      pair: string;
+      side: "buy" | "sell";
+      amount: number;
+      price: number;
+      role: "maker" | "taker";
+    };
+
 function History({ orders, loading }: { orders: ApiOrder[]; loading: boolean }) {
   const t = useTranslator();
   const { isConnected } = useAccount();
+  const fills = useWalletFills();
+
+  // Approximate "now" for fill ageSec → unix time conversion. Fills carry
+  // ageSec relative to the latest indexed block; subtract from now for a
+  // sortable timestamp without round-tripping the block-time RPC. Strict
+  // purity rule flags Date.now in render — fine here since fills.fills
+  // already drives the useMemo cadence and a few seconds of drift is
+  // immaterial to a "minutes ago" timestamp.
+  // eslint-disable-next-line react-hooks/purity
+  const nowSec = Math.floor(Date.now() / 1000);
+
+  const items = useMemo<HistoryItem[]>(() => {
+    if (!isConnected) return [];
+
+    // Off-chain terminations: cancelled + expired API orders (the maker's
+    // own already, since useMyOrders filtered upstream).
+    const orderItems: HistoryItem[] = [];
+    for (const o of orders) {
+      if (o.status !== "cancelled" && o.status !== "expired") continue;
+      const derived = deriveSide(o);
+      if (!derived) continue;
+      const { side, base, quote } = derived;
+      const { price, amount } = priceAndAmount(o, side, base, quote);
+      orderItems.push({
+        kind: "order",
+        key: `o:${o.orderHash}`,
+        time: o.createdAt,
+        pair: o.pair,
+        side,
+        amount,
+        price,
+        status: o.status,
+      });
+    }
+
+    // On-chain fills, both maker- and taker-side.
+    const fillItems: HistoryItem[] = fills.fills.map((f: WalletFill) => ({
+      kind: "fill" as const,
+      key: `f:${f.txHash}-${f.blockNumber.toString()}`,
+      time: nowSec - f.ageSec,
+      pair: f.pair,
+      side: f.walletSide,
+      amount: f.baseAmount,
+      price: f.price,
+      role: f.role,
+    }));
+
+    return [...orderItems, ...fillItems].sort((a, b) => b.time - a.time);
+  }, [orders, fills.fills, isConnected, nowSec]);
 
   if (!isConnected) {
     return (
@@ -496,17 +571,12 @@ function History({ orders, loading }: { orders: ApiOrder[]; loading: boolean }) 
     );
   }
 
-  // Until the on-chain fill indexer (Phase 3.5b) lands, "history" surfaces
-  // the maker's own resolved orders (filled / cancelled / expired) as proxy
-  // for trade history. The protocol-fee column doesn't apply yet — left as —.
-  const items = orders
-    .filter((o) => HISTORICAL_STATUSES.has(o.status))
-    .sort((a, b) => b.createdAt - a.createdAt);
+  const showLoading = (loading || fills.loading) && items.length === 0;
 
   if (items.length === 0) {
     return (
       <div className="px-4 py-12 text-center text-[13px] text-fg-faint">
-        {loading ? "loading…" : t("trade.history.empty")}
+        {showLoading ? t("trade.myOrders.loading") : t("trade.history.empty")}
       </div>
     );
   }
@@ -523,31 +593,33 @@ function History({ orders, loading }: { orders: ApiOrder[]; loading: boolean }) 
         <div className="text-center">{t("trade.myOrders.status")}</div>
       </div>
 
-      {items.map((o) => {
-        const derived = deriveSide(o);
-        if (!derived) return null;
-        const { side, base, quote } = derived;
-        const { price, amount } = priceAndAmount(o, side, base, quote);
-        const time = new Date(o.createdAt * 1000)
+      {items.map((it) => {
+        const time = new Date(it.time * 1000)
           .toISOString()
           .replace("T", " ")
           .slice(0, 16);
+        const status =
+          it.kind === "fill"
+            ? it.role === "maker"
+              ? "filled"
+              : "filled-as-taker"
+            : it.status;
         return (
           <div
-            key={o.orderHash}
+            key={it.key}
             className="border-b border-line last:border-b-0 hover:bg-white/[0.02]"
           >
             {/* Desktop row */}
             <div className="hidden md:grid grid-cols-[160px_140px_70px_1fr_120px_120px] px-4 py-3 text-[13px] font-mono items-center">
               <div className="text-fg-dim tnum">{time}</div>
-              <div className="font-sans font-medium">{o.pair}</div>
-              <div className={side === "buy" ? "text-buy" : "text-sell"}>
-                {side.toUpperCase()}
+              <div className="font-sans font-medium">{it.pair}</div>
+              <div className={it.side === "buy" ? "text-buy" : "text-sell"}>
+                {it.side.toUpperCase()}
               </div>
-              <div className="text-right tnum">{fmtAmount(amount)}</div>
-              <div className="text-right tnum">{fmtPrice(price)}</div>
+              <div className="text-right tnum">{fmtAmount(it.amount)}</div>
+              <div className="text-right tnum">{fmtPrice(it.price)}</div>
               <div className="text-center">
-                <StatusBadge status={o.status} />
+                <HistoryStatusBadge status={status} />
               </div>
             </div>
 
@@ -555,15 +627,15 @@ function History({ orders, loading }: { orders: ApiOrder[]; loading: boolean }) 
             <div className="md:hidden px-4 py-3">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-[14px]">{o.pair}</span>
+                  <span className="font-medium text-[14px]">{it.pair}</span>
                   <span
                     className={`text-[11px] font-medium ${
-                      side === "buy" ? "text-buy" : "text-sell"
+                      it.side === "buy" ? "text-buy" : "text-sell"
                     }`}
                   >
-                    {side.toUpperCase()}
+                    {it.side.toUpperCase()}
                   </span>
-                  <StatusBadge status={o.status} />
+                  <HistoryStatusBadge status={status} />
                 </div>
                 <span className="text-[11px] font-mono tnum text-fg-faint">
                   {time}
@@ -571,9 +643,9 @@ function History({ orders, loading }: { orders: ApiOrder[]; loading: boolean }) 
               </div>
               <div className="grid grid-cols-2 gap-y-1 text-[13px]">
                 <span className="text-fg-faint">{t("trade.history.amount")}</span>
-                <span className="text-right font-mono tnum">{fmtAmount(amount)}</span>
+                <span className="text-right font-mono tnum">{fmtAmount(it.amount)}</span>
                 <span className="text-fg-faint">{t("trade.history.price")}</span>
-                <span className="text-right font-mono tnum">{fmtPrice(price)}</span>
+                <span className="text-right font-mono tnum">{fmtPrice(it.price)}</span>
               </div>
             </div>
           </div>
@@ -612,15 +684,13 @@ function Permit2Card({ token }: { token: Token }) {
   const s = useTokenStatus(token);
   const hasAddress = Boolean(s.tokenAddress);
 
-  const state: "no-address" | "disconnected" | "approved" | "partial" | "not-approved" =
+  const state: "no-address" | "disconnected" | "approved" | "not-approved" =
     !hasAddress
       ? "no-address"
       : !s.isConnected
       ? "disconnected"
-      : s.isFullyApproved
-      ? "approved"
       : s.isErc20Approved
-      ? "partial"
+      ? "approved"
       : "not-approved";
 
   return (
@@ -658,19 +728,12 @@ function Permit2Card({ token }: { token: Token }) {
 function StateBadge({
   state,
 }: {
-  state: "no-address" | "disconnected" | "approved" | "partial" | "not-approved";
+  state: "no-address" | "disconnected" | "approved" | "not-approved";
 }) {
   if (state === "approved") {
     return (
       <span className="text-[11px] px-2 py-0.5 rounded-full bg-buy/15 text-buy">
         Active
-      </span>
-    );
-  }
-  if (state === "partial") {
-    return (
-      <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400">
-        Step 2/2
       </span>
     );
   }
@@ -698,17 +761,13 @@ function PermitBody({
   const t = useTranslator();
   const balance = formatBalanceWithCommas(status.balance, token.decimals);
 
-  const isFullyApproved = status.isFullyApproved;
-  const isPartial = !isFullyApproved && status.isErc20Approved;
+  const isApproved = status.isErc20Approved;
 
-  let statusCopy: string;
-  if (isFullyApproved) {
-    statusCopy = t("trade.approvedTokens.approved");
-  } else if (isPartial) {
-    statusCopy = t("trade.approvedTokens.partialDescription");
-  } else {
-    statusCopy = t("trade.approvedTokens.statusNotApproved");
-  }
+  const statusCopy = (
+    isApproved
+      ? t("trade.approvedTokens.approved")
+      : t("trade.approvedTokens.statusNotApproved")
+  ).replace("{symbol}", token.symbol);
 
   return (
     <>
@@ -721,22 +780,11 @@ function PermitBody({
         </span>
       </div>
 
-      <div className="mb-3 flex flex-col gap-1 text-[11px]">
-        <StepRow
-          label={t("trade.approvedTokens.step1Label")}
-          done={status.isErc20Approved}
-        />
-        <StepRow
-          label={t("trade.approvedTokens.step2Label")}
-          done={status.isPermit2DexApproved}
-        />
-      </div>
-
       <p className="text-[12px] text-fg-dim mb-3 leading-relaxed">
         {statusCopy}
       </p>
 
-      {isFullyApproved ? (
+      {isApproved ? (
         <button
           onClick={status.revoke}
           disabled={status.isRevoking}
@@ -744,7 +792,10 @@ function PermitBody({
         >
           {status.isRevoking
             ? t("trade.approvedTokens.revoking")
-            : t("trade.approvedTokens.revoke")}
+            : t("trade.approvedTokens.revoke").replace(
+                "{symbol}",
+                token.symbol,
+              )}
         </button>
       ) : null}
 
@@ -770,29 +821,6 @@ function formatBalanceWithCommas(raw: bigint, decimals: number): string {
   const fracPadded = fracRaw.toString().padStart(decimals, "0").slice(0, 4);
   const fracTrimmed = fracPadded.replace(/0+$/, "");
   return fracTrimmed.length === 0 ? wholeStr : `${wholeStr}.${fracTrimmed}`;
-}
-
-function StepRow({ label, done }: { label: string; done: boolean }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span
-        className={`inline-flex items-center justify-center w-3.5 h-3.5 rounded-full text-[9px] ${
-          done ? "bg-buy/20 text-buy" : "bg-white/[0.06] text-fg-faint"
-        }`}
-        aria-hidden="true"
-      >
-        {done ? "✓" : "•"}
-      </span>
-      <span className={done ? "text-fg-dim" : "text-fg-faint"}>{label}</span>
-    </div>
-  );
-}
-
-function trimTrailingZeros(s: string, maxDecimals = 4): string {
-  if (!s.includes(".")) return s;
-  const [whole, frac] = s.split(".");
-  const trimmed = frac.replace(/0+$/, "").slice(0, maxDecimals);
-  return trimmed.length === 0 ? whole : `${whole}.${trimmed}`;
 }
 
 function SubTab({
@@ -832,6 +860,28 @@ function StatusBadge({ status }: { status: string }) {
   return (
     <span className={`text-[11px] px-2 py-0.5 rounded font-mono ${cls}`}>
       {status}
+    </span>
+  );
+}
+
+function HistoryStatusBadge({ status }: { status: string }) {
+  // History rows distinguish a maker-side fill ("filled") from a taker-side
+  // fill ("filled-as-taker") because the latter is a buy you initiated, not
+  // a sell that finally cleared. Cancelled / expired keep StatusBadge styling.
+  const cls =
+    status === "filled"
+      ? "bg-buy/15 text-buy"
+      : status === "filled-as-taker"
+      ? "bg-accent-soft text-accent"
+      : status === "cancelled"
+      ? "bg-white/[0.05] text-fg-dim"
+      : status === "expired"
+      ? "bg-white/[0.05] text-fg-faint"
+      : "bg-white/[0.05] text-fg-dim";
+  const label = status === "filled-as-taker" ? "filled (taker)" : status;
+  return (
+    <span className={`text-[11px] px-2 py-0.5 rounded font-mono ${cls}`}>
+      {label}
     </span>
   );
 }

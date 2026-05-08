@@ -15,8 +15,16 @@ import {
   randomSalt,
   type Order,
 } from "@/lib/order";
+import {
+  buildOrderPermit,
+  buildPermit2Domain,
+  PERMIT_SINGLE_TYPES,
+  serialisePermitSingle,
+  type PermitSingle,
+} from "@/lib/permit2";
 import { TOKENS, feeConfig, type Pair, type Token } from "@/lib/tokens";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { type Hex } from "viem";
 import { useAccount, useChainId, useSignTypedData } from "wagmi";
 
 type Side = "buy" | "sell";
@@ -50,9 +58,10 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
   >(null);
 
   // True between the moment the user clicks "Sign Order" and the modal opens.
-  // While set, the auto-approve flow is gating: as soon as the maker-token's
-  // two-step Permit2 approval is fully in place, we proceed to build and show
-  // the sign-confirm modal.
+  // While set, the auto-approve flow is gating: as soon as the maker token's
+  // ERC-20 → Permit2 leg is in place, we proceed to build + show the sign
+  // modal. (Permit2 → DEX is no longer a pre-approved allowance — round-3
+  // moved that to a per-order PermitSingle signed inside confirmSign().)
   const awaitingApproval = useRef(false);
 
   // -- Form-derived totals ---------------------------------------------
@@ -146,12 +155,12 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
   function startSign() {
     if (!canSign || !account || !dexAddress) return;
 
-    // If the maker token isn't fully approved yet, fire the two-step Permit2
-    // flow first; the effect above will auto-build + open the modal once
-    // both legs confirm. The user clicks once, MetaMask prompts up to three
-    // times back-to-back (ERC-20 → Permit2, Permit2 → DEX, then EIP-712
-    // sign), with the same single in-flight state.
-    if (!makerStatus.isFullyApproved) {
+    // If the wallet → Permit2 leg isn't approved yet, fire that one
+    // on-chain transaction first. The effect above watches for it and
+    // auto-advances to the sign modal once it confirms. The user gets at
+    // most: 1 on-chain approve tx (only if missing) + 2 wallet signatures
+    // (Order + per-order PermitSingle, both off-chain, no gas).
+    if (!makerStatus.isErc20Approved) {
       awaitingApproval.current = true;
       makerStatus.approve();
       return;
@@ -163,12 +172,41 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
   async function confirmSign() {
     if (!pendingOrder || !dexAddress) return;
     try {
+      // Wallet popup #1: the Order itself.
       const signature = await signTypedDataAsync({
         domain: buildDomain(chainId, dexAddress),
         types: ORDER_TYPES,
         primaryType: "Order",
         message: pendingOrder as unknown as Record<string, unknown>,
       } as Parameters<typeof signTypedDataAsync>[0]);
+
+      // Wallet popup #2: the per-order Permit2 PermitSingle. amount/expiry
+      // are bound 1:1 to the order, so this signature only authorises what
+      // the order itself can spend — no idle blanket allowance is created.
+      const permitSingle: PermitSingle = buildOrderPermit({
+        ownerNonce: makerStatus.permit2DexNonce,
+        makerToken: pendingOrder.makerToken,
+        makerAmount: pendingOrder.makerAmount,
+        expiry: pendingOrder.expiry,
+        dex: dexAddress,
+      });
+
+      let permitSignature: Hex;
+      try {
+        permitSignature = (await signTypedDataAsync({
+          domain: buildPermit2Domain(chainId),
+          types: PERMIT_SINGLE_TYPES,
+          primaryType: "PermitSingle",
+          message: permitSingle as unknown as Record<string, unknown>,
+        } as Parameters<typeof signTypedDataAsync>[0])) as Hex;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setLastResult({
+          ok: false,
+          error: `Permit2 sign cancelled: ${msg.slice(0, 140)}`,
+        });
+        return;
+      }
 
       // Post to /api/orders so it lands on the order book.
       const res = await fetch("/api/orders", {
@@ -179,6 +217,8 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
           signature,
           pair: `${pair.base}/${pair.quote}`,
           chainId,
+          permitSingle: serialisePermitSingle(permitSingle),
+          permitSignature,
         }),
       });
 
@@ -352,19 +392,14 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
         >
           {!canSign
             ? reasons[0]
-            : makerStatus.approveStep === "step1"
-            ? t("trade.placeOrder.approvingStep1").replace(
-                "{symbol}",
-                makerToken.symbol,
-              )
-            : makerStatus.approveStep === "step2"
-            ? t("trade.placeOrder.approvingStep2").replace(
+            : makerStatus.approveStep === "approving"
+            ? t("trade.placeOrder.approvingErc20").replace(
                 "{symbol}",
                 makerToken.symbol,
               )
             : signing
             ? t("trade.placeOrder.waitingForWallet")
-            : !makerStatus.isFullyApproved
+            : !makerStatus.isErc20Approved
             ? t("trade.placeOrder.approveAndSign").replace(
                 "{symbol}",
                 makerToken.symbol,

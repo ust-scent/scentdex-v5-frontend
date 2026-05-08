@@ -8,6 +8,7 @@ import {
 
 import { SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
 import { ORDER_TYPES, buildDomain, type Order } from "@/lib/order";
+import type { SerialisedPermitSingle } from "@/lib/permit2";
 import {
   insertOrder,
   listOrders,
@@ -55,7 +56,8 @@ export async function POST(req: NextRequest) {
   if (!parsed.ok) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
-  const { order, signature, pair, chainId } = parsed.value;
+  const { order, signature, pair, chainId, permitSingle, permitSignature } =
+    parsed.value;
 
   const dexAddress = SCENTDEX_V5_ADDRESS[chainId];
   if (!dexAddress) {
@@ -121,6 +123,8 @@ export async function POST(req: NextRequest) {
     pair,
     chainId,
     createdAt: Math.floor(Date.now() / 1000),
+    permitSingle,
+    permitSignature,
   };
 
   try {
@@ -146,6 +150,14 @@ type SubmitBody = {
   signature: Hex;
   pair: string;
   chainId: number;
+  /**
+   * Round-3: per-order Permit2 signature. The maker signs a PermitSingle
+   * scoped to (token=makerToken, amount=makerAmount, expiration=expiry,
+   * spender=DEX) and the taker forwards it via fillOrder. Optional during
+   * the round-3 transition so legacy orders without one still post.
+   */
+  permitSingle?: SerialisedPermitSingle;
+  permitSignature?: Hex;
 };
 
 function parseSubmitBody(
@@ -221,6 +233,35 @@ function parseSubmitBody(
     return { ok: false, error: "order.feeBps must be 0..10000" };
   }
 
+  // Round-3 fields — optional + structurally checked. We accept the body
+  // even without them (legacy infinite-allowance flow) so the round-3 cut
+  // doesn't strand existing UAT orders, but new clients should always send
+  // both.
+  let permitSingle: SerialisedPermitSingle | undefined;
+  let permitSignature: Hex | undefined;
+  if (b.permitSingle !== undefined) {
+    const validation = validatePermitSingle(b.permitSingle);
+    if (!validation.ok) {
+      return { ok: false, error: validation.error };
+    }
+    permitSingle = validation.value;
+  }
+  if (b.permitSignature !== undefined) {
+    if (
+      typeof b.permitSignature !== "string" ||
+      !b.permitSignature.startsWith("0x")
+    ) {
+      return { ok: false, error: "permitSignature missing or malformed" };
+    }
+    permitSignature = b.permitSignature as Hex;
+  }
+  if ((permitSingle && !permitSignature) || (!permitSingle && permitSignature)) {
+    return {
+      ok: false,
+      error: "permitSingle and permitSignature must come together",
+    };
+  }
+
   return {
     ok: true,
     value: {
@@ -239,6 +280,68 @@ function parseSubmitBody(
       signature: b.signature as Hex,
       pair: b.pair,
       chainId: b.chainId,
+      permitSingle,
+      permitSignature,
+    },
+  };
+}
+
+function validatePermitSingle(
+  raw: unknown,
+):
+  | { ok: true; value: SerialisedPermitSingle }
+  | { ok: false; error: string } {
+  if (!raw || typeof raw !== "object") {
+    return { ok: false, error: "permitSingle must be object" };
+  }
+  const p = raw as Record<string, unknown>;
+  const d = p.details as Record<string, unknown> | undefined;
+  if (!d || typeof d !== "object") {
+    return { ok: false, error: "permitSingle.details missing" };
+  }
+  if (typeof d.token !== "string" || !isAddress(d.token)) {
+    return { ok: false, error: "permitSingle.details.token invalid address" };
+  }
+  if (typeof d.amount !== "string") {
+    return {
+      ok: false,
+      error: "permitSingle.details.amount must be a decimal string",
+    };
+  }
+  try {
+    BigInt(d.amount);
+  } catch {
+    return { ok: false, error: "permitSingle.details.amount unparsable" };
+  }
+  if (typeof d.expiration !== "number" || d.expiration < 0) {
+    return { ok: false, error: "permitSingle.details.expiration must be uint48" };
+  }
+  if (typeof d.nonce !== "number" || d.nonce < 0) {
+    return { ok: false, error: "permitSingle.details.nonce must be uint48" };
+  }
+  if (typeof p.spender !== "string" || !isAddress(p.spender)) {
+    return { ok: false, error: "permitSingle.spender invalid address" };
+  }
+  if (typeof p.sigDeadline !== "string") {
+    return { ok: false, error: "permitSingle.sigDeadline must be a decimal string" };
+  }
+  try {
+    BigInt(p.sigDeadline);
+  } catch {
+    return { ok: false, error: "permitSingle.sigDeadline unparsable" };
+  }
+
+  return {
+    ok: true,
+    value: {
+      details: {
+        token: d.token as Address,
+        amount: d.amount as string,
+        expiration: d.expiration,
+        nonce: d.nonce,
+      },
+      spender: p.spender as Address,
+      sigDeadline: p.sigDeadline as string,
     },
   };
 }

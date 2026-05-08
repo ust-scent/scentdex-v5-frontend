@@ -18,6 +18,7 @@
 import type { Address, Hex } from "viem";
 
 import { isDbAvailable, query } from "@/lib/db";
+import type { SerialisedPermitSingle } from "@/lib/permit2";
 
 // ---------- shared shapes ----------------------------------------------------
 
@@ -51,6 +52,13 @@ export type StoredOrder = {
   pair: string;
   chainId: number;
   createdAt: number; // unix seconds — kept for API back-compat
+  /**
+   * Round-3: per-order Permit2 signature. Optional so legacy orders without
+   * one (which rely on a standing wallet → Permit2 → DEX allowance) still
+   * round-trip cleanly. New orders should always populate both fields.
+   */
+  permitSingle?: SerialisedPermitSingle;
+  permitSignature?: Hex;
 };
 
 export type OrderEventType =
@@ -119,9 +127,11 @@ export async function insertOrder(o: StoredOrder): Promise<void> {
       `INSERT INTO orders (
          order_hash, maker, maker_token, taker_token,
          maker_amount, taker_amount, expiry, nonce, salt,
-         fee_side, fee_bps, signature, pair, chain_id, status
+         fee_side, fee_bps, signature, pair, chain_id, status,
+         permit_single_json, permit_signature
        ) VALUES (
-         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'open'
+         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'open',
+         $15, $16
        ) ON CONFLICT (order_hash) DO NOTHING`,
       [
         o.orderHash,
@@ -138,6 +148,8 @@ export async function insertOrder(o: StoredOrder): Promise<void> {
         o.signature,
         o.pair,
         o.chainId,
+        o.permitSingle ? JSON.stringify(o.permitSingle) : null,
+        o.permitSignature ?? null,
       ],
     );
     await recordEvent(o.orderHash, o.order.maker, "created");
@@ -356,11 +368,24 @@ type DbOrderRow = {
   status: OrderStatus;
   filled_maker_amount: string;
   filled_taker_amount: string;
+  permit_single_json: SerialisedPermitSingle | string | null;
+  permit_signature: string | null;
   created_at: Date;
   updated_at: Date;
 };
 
 function rowToStored(r: DbOrderRow): StoredOrder {
+  // node-postgres returns JSONB columns as already-parsed objects in most
+  // configs, but some drivers (or older versions) hand back the raw JSON
+  // string. Handle both cleanly so we never crash on a Postgres rebuild.
+  let permitSingle: SerialisedPermitSingle | undefined;
+  if (r.permit_single_json) {
+    permitSingle =
+      typeof r.permit_single_json === "string"
+        ? (JSON.parse(r.permit_single_json) as SerialisedPermitSingle)
+        : r.permit_single_json;
+  }
+
   return {
     orderHash: r.order_hash as Hex,
     signature: r.signature as Hex,
@@ -382,6 +407,8 @@ function rowToStored(r: DbOrderRow): StoredOrder {
       feeSide: r.fee_side as Address,
       feeBps: r.fee_bps,
     },
+    permitSingle,
+    permitSignature: (r.permit_signature ?? undefined) as Hex | undefined,
   };
 }
 
