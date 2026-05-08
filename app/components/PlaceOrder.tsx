@@ -16,8 +16,7 @@ import {
   type Order,
 } from "@/lib/order";
 import { TOKENS, feeConfig, type Pair, type Token } from "@/lib/tokens";
-import { useMemo, useState } from "react";
-import { formatUnits } from "viem";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAccount, useChainId, useSignTypedData } from "wagmi";
 
 type Side = "buy" | "sell";
@@ -37,6 +36,11 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
   const baseToken = TOKENS.find((t) => t.symbol === pair.base)!;
   const quoteToken = TOKENS.find((t) => t.symbol === pair.quote)!;
 
+  // The maker token is the one the user gives up: base on sell, quote on buy.
+  // Permit2 needs to be approved for THAT token before any taker can fill.
+  const makerToken = side === "sell" ? baseToken : quoteToken;
+  const makerStatus = useTokenStatus(makerToken);
+
   const { signTypedDataAsync, isPending: signing } = useSignTypedData();
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -44,6 +48,12 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
   const [lastResult, setLastResult] = useState<
     { ok: true; signature: string; orderHash?: string } | { ok: false; error: string } | null
   >(null);
+
+  // True between the moment the user clicks "Sign Order" and the modal opens.
+  // While set, the auto-approve flow is gating: as soon as the maker-token's
+  // two-step Permit2 approval is fully in place, we proceed to build and show
+  // the sign-confirm modal.
+  const awaitingApproval = useRef(false);
 
   // -- Form-derived totals ---------------------------------------------
   const cfg = feeConfig(pair);
@@ -76,8 +86,8 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
   if (!amount || Number(amount) <= 0) reasons.push(t("trade.placeOrder.enterAmount"));
   const canSign = reasons.length === 0;
 
-  function startSign() {
-    if (!canSign || !account || !dexAddress) return;
+  function proceedToModal() {
+    if (!account || !dexAddress) return;
 
     const amounts = buildAmounts({
       side,
@@ -108,7 +118,7 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
       makerAmount: amounts.makerAmount,
       takerAmount: amounts.takerAmount,
       expiry: expiryFromChoice(expiry),
-      nonce: BigInt(Math.floor(Date.now() / 1000)), // unix-second monotonic seed
+      nonce: BigInt(Math.floor(Date.now() / 1000)),
       salt: randomSalt(),
       feeSide,
       feeBps,
@@ -117,6 +127,37 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
     setPendingOrder(order);
     setLastResult(null);
     setModalOpen(true);
+  }
+
+  // Effect: when an order-sign click is gated on approval, auto-advance to
+  // building + opening the modal as soon as both legs are in place.
+  // proceedToModal sets pendingOrder + modalOpen, which is what we want — the
+  // strict purity rule flags this but the cascade is intentional here, gated
+  // by the awaitingApproval ref so it only fires once per click.
+  useEffect(() => {
+    if (!awaitingApproval.current) return;
+    if (!makerStatus.isFullyApproved) return;
+    awaitingApproval.current = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    proceedToModal();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [makerStatus.isFullyApproved]);
+
+  function startSign() {
+    if (!canSign || !account || !dexAddress) return;
+
+    // If the maker token isn't fully approved yet, fire the two-step Permit2
+    // flow first; the effect above will auto-build + open the modal once
+    // both legs confirm. The user clicks once, MetaMask prompts up to three
+    // times back-to-back (ERC-20 → Permit2, Permit2 → DEX, then EIP-712
+    // sign), with the same single in-flight state.
+    if (!makerStatus.isFullyApproved) {
+      awaitingApproval.current = true;
+      makerStatus.approve();
+      return;
+    }
+
+    proceedToModal();
   }
 
   async function confirmSign() {
@@ -287,9 +328,13 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
         {lastResult ? (
           lastResult.ok ? (
             <div className="px-3 py-2 rounded-md border border-buy/30 bg-buy/[0.05] text-[12px] text-buy">
-              Order signed. Signature: <span className="font-mono text-[11px]">{lastResult.signature.slice(0, 10)}…{lastResult.signature.slice(-8)}</span>
+              {t("trade.placeOrder.orderSigned")}{" "}
+              <span className="font-mono text-[11px]">
+                {lastResult.signature.slice(0, 10)}…
+                {lastResult.signature.slice(-8)}
+              </span>
               <div className="text-fg-faint mt-1">
-                Phase 3.3 next: post to /api/orders so it appears on the book.
+                {t("trade.placeOrder.orderPosted")}
               </div>
             </div>
           ) : (
@@ -301,14 +346,29 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
 
         <button
           onClick={startSign}
-          disabled={!canSign || signing}
+          disabled={!canSign || signing || makerStatus.isApproving}
           className="mt-2 w-full py-3 rounded-md bg-accent text-bg font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
           title={reasons.join(" · ")}
         >
           {!canSign
             ? reasons[0]
+            : makerStatus.approveStep === "step1"
+            ? t("trade.placeOrder.approvingStep1").replace(
+                "{symbol}",
+                makerToken.symbol,
+              )
+            : makerStatus.approveStep === "step2"
+            ? t("trade.placeOrder.approvingStep2").replace(
+                "{symbol}",
+                makerToken.symbol,
+              )
             : signing
             ? t("trade.placeOrder.waitingForWallet")
+            : !makerStatus.isFullyApproved
+            ? t("trade.placeOrder.approveAndSign").replace(
+                "{symbol}",
+                makerToken.symbol,
+              )
             : t("trade.placeOrder.signOrder")}
         </button>
       </div>
@@ -367,7 +427,7 @@ function Row({
 
 function fmtNum(n: number): string {
   if (!Number.isFinite(n) || n === 0) return "0.00";
-  return n.toLocaleString(undefined, { maximumFractionDigits: 6 });
+  return n.toLocaleString("en-US", { maximumFractionDigits: 6 });
 }
 
 function BalanceStrip({
@@ -383,16 +443,9 @@ function BalanceStrip({
   const dexAddress = SCENTDEX_V5_ADDRESS[chainId];
   const onSupportedChain = Boolean(dexAddress);
 
-  // Pair tokens come first so they're always front-and-centre, then the rest
-  // of the supported set so the maker can see their full wallet at a glance
-  // without bouncing to the Approved Tokens tab or MetaMask.
-  const pairSet = new Set([baseToken.symbol, quoteToken.symbol]);
-  const otherTokens = TOKENS.filter((tok) => !pairSet.has(tok.symbol));
-  const tokensToShow = [baseToken, quoteToken, ...otherTokens];
-
   return (
     <div className="px-3 py-2.5 rounded-md border border-line-strong bg-white/[0.04]">
-      <div className="text-[10px] uppercase tracking-[0.14em] text-fg-dim mb-1.5 flex items-center justify-between">
+      <div className="text-[10px] uppercase tracking-[0.14em] text-fg-dim mb-2 flex items-center justify-between">
         <span>{t("trade.placeOrder.balances")}</span>
         {isConnected && !onSupportedChain ? (
           <span className="text-amber-400 normal-case tracking-normal text-[11px] font-medium">
@@ -405,21 +458,16 @@ function BalanceStrip({
           {t("trade.placeOrder.balanceConnect")}
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1.5">
-          {tokensToShow.map((tok, i) => (
-            <BalanceCell
-              key={tok.symbol}
-              token={tok}
-              emphasis={i < 2}
-            />
-          ))}
+        <div className="grid grid-cols-2 gap-x-6 gap-y-1">
+          <BalanceCell token={baseToken} />
+          <BalanceCell token={quoteToken} />
         </div>
       )}
     </div>
   );
 }
 
-function BalanceCell({ token, emphasis }: { token: Token; emphasis?: boolean }) {
+function BalanceCell({ token }: { token: Token }) {
   const t = useTranslator();
   const status = useTokenStatus(token);
   const hasAddress = Boolean(status.tokenAddress);
@@ -427,26 +475,29 @@ function BalanceCell({ token, emphasis }: { token: Token; emphasis?: boolean }) 
     ? t("trade.placeOrder.notDeployedHere")
     : status.balanceLoading
     ? "…"
-    : trimZeros(formatUnits(status.balance, token.decimals), 4);
+    : formatBalance(status.balance, token.decimals);
   return (
-    <div className="flex items-baseline justify-between gap-2 text-[12px]">
-      <span className={emphasis ? "text-fg-dim" : "text-fg-faint"}>
+    <div className="flex flex-col gap-0.5 min-w-0">
+      <span className="text-[10px] uppercase tracking-[0.14em] text-fg-faint">
         {token.symbol}
       </span>
-      <span
-        className={`font-mono tnum ${emphasis ? "text-fg" : "text-fg-dim"}`}
-      >
+      <span className="font-mono tnum text-[14px] text-fg truncate">
         {display}
       </span>
     </div>
   );
 }
 
-function trimZeros(s: string, maxDecimals = 4): string {
-  if (!s.includes(".")) return s;
-  const [whole, frac] = s.split(".");
-  const trimmed = frac.replace(/0+$/, "").slice(0, maxDecimals);
-  return trimmed.length === 0 ? whole : `${whole}.${trimmed}`;
+/** Comma-grouped balance with up to 4 decimals trimmed of trailing zeros. */
+function formatBalance(raw: bigint, decimals: number): string {
+  const whole = raw / 10n ** BigInt(decimals);
+  const fracRaw = raw % 10n ** BigInt(decimals);
+  const wholeStr = whole.toLocaleString("en-US");
+  if (fracRaw === 0n) return wholeStr;
+  // Pad fractional part to full decimals, then truncate to 4 + trim zeros.
+  const fracPadded = fracRaw.toString().padStart(decimals, "0").slice(0, 4);
+  const fracTrimmed = fracPadded.replace(/0+$/, "");
+  return fracTrimmed.length === 0 ? wholeStr : `${wholeStr}.${fracTrimmed}`;
 }
 
 function serialiseOrder(order: Order) {

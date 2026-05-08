@@ -174,6 +174,35 @@ export function useTokenStatus(token: Token) {
     }
   };
 
+  /**
+   * Revokes Permit2 → DEX allowance for this token. Calls
+   * `Permit2.approve(token, dex, 0, 0)` which collapses the per-spender
+   * allowance to zero with `expiration = 0` (immediately expired). This is
+   * the only step that matters for on-chain safety — Permit2 cannot transfer
+   * without the second-leg allowance, so the wallet → Permit2 leg is left
+   * in place; users who want to wipe that too can do so from MetaMask.
+   */
+  const revokePermit2Tx = useWriteContract();
+  const revokePermit2Receipt = useWaitForTransactionReceipt({
+    hash: revokePermit2Tx.data,
+    query: { enabled: Boolean(revokePermit2Tx.data) },
+  });
+  const revoke = () => {
+    if (!tokenAddress || !dexAddress) return;
+    revokePermit2Tx.writeContract({
+      address: PERMIT2_ADDRESS,
+      abi: PERMIT2_ABI,
+      functionName: "approve",
+      args: [tokenAddress, dexAddress, 0n, 0],
+    });
+  };
+  useEffect(() => {
+    if (revokePermit2Receipt.isSuccess) {
+      void permit2DexAllowance.refetch();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revokePermit2Receipt.isSuccess]);
+
   // Auto-chain step 2 once step 1 confirms within an active flow.
   useEffect(() => {
     if (!flowActive.current) return;
@@ -271,6 +300,11 @@ export function useTokenStatus(token: Token) {
     isApproving,
     isApproveConfirmed: approveErc20Receipt.isSuccess && approvePermit2Receipt.isSuccess,
     approveError: approveErc20Tx.error ?? approvePermit2Tx.error,
+
+    revoke,
+    isRevoking: revokePermit2Tx.isPending || revokePermit2Receipt.isLoading,
+    isRevokeConfirmed: revokePermit2Receipt.isSuccess,
+    revokeError: revokePermit2Tx.error,
 
     mintDefault,
     isMinting: mintTx.isPending || mintReceipt.isLoading,

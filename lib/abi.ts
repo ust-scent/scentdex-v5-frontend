@@ -103,6 +103,49 @@ export const PERMIT2_ABI = [
 ] as const;
 
 /**
+ * SCENTDEX V5 — read-only fragments used by the trade UI: the OrderFilled
+ * event (drives Stats + Recent Trades) and the `pairConfig(a, b)` getter
+ * (drives the maker-fee tile + lets the maker sign an Order whose feeSide
+ * and feeBps match the current on-chain pair config).
+ */
+export const SCENTDEX_V5_ABI = [
+  {
+    type: "event",
+    name: "OrderFilled",
+    inputs: [
+      { name: "orderHash", type: "bytes32", indexed: true },
+      { name: "maker", type: "address", indexed: true },
+      { name: "taker", type: "address", indexed: true },
+      { name: "makerToken", type: "address", indexed: false },
+      { name: "takerToken", type: "address", indexed: false },
+      { name: "fillMakerAmount", type: "uint256", indexed: false },
+      { name: "fillTakerAmount", type: "uint256", indexed: false },
+      { name: "protocolFeeAmount", type: "uint256", indexed: false },
+      { name: "feeToken", type: "address", indexed: false },
+    ],
+  },
+  {
+    type: "function",
+    name: "pairConfig",
+    stateMutability: "view",
+    inputs: [
+      { name: "tokenA", type: "address" },
+      { name: "tokenB", type: "address" },
+    ],
+    outputs: [
+      {
+        type: "tuple",
+        components: [
+          { name: "enabled", type: "bool" },
+          { name: "feeSide", type: "address" },
+          { name: "feeBps", type: "uint16" },
+        ],
+      },
+    ],
+  },
+] as const;
+
+/**
  * MockERC20 deployed on Sepolia. Adds public `mint(to, amount)` for faucet use.
  * NOT present on mainnet (production tokens are real ERC-20s without mint).
  */

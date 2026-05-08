@@ -4,6 +4,7 @@ import { formatUnits, type Address } from "viem";
 import { useEffect, useMemo, useState } from "react";
 
 import { SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
+import { useTranslator } from "@/lib/locale-context";
 import type { Order } from "@/lib/order";
 import type { Token } from "@/lib/tokens";
 
@@ -51,7 +52,8 @@ export function SignConfirmModal({
   onConfirm: () => void;
   signing?: boolean;
 }) {
-  const rules = useMemo(() => (ctx ? evaluateRules(ctx) : []), [ctx]);
+  const t = useTranslator();
+  const rules = useMemo(() => (ctx ? evaluateRules(ctx, t) : []), [ctx, t]);
   const allOk = rules.every((r) => r.ok);
   const [holdMs, setHoldMs] = useState(0);
 
@@ -74,12 +76,12 @@ export function SignConfirmModal({
             id="sign-modal-title"
             className="text-[15px] font-medium tracking-wide"
           >
-            Confirm order signature
+            {t("trade.signModal.title")}
           </h3>
           <button
             onClick={onCancel}
             className="text-fg-faint hover:text-fg text-lg leading-none"
-            aria-label="Close"
+            aria-label={t("trade.signModal.close")}
           >
             ×
           </button>
@@ -90,7 +92,7 @@ export function SignConfirmModal({
 
           <div className="mt-5">
             <div className="text-[10px] uppercase tracking-[0.16em] text-fg-faint mb-2">
-              Phishing checks
+              {t("trade.signModal.phishingChecks")}
             </div>
             <div className="space-y-1.5">
               {rules.map((r) => (
@@ -100,17 +102,14 @@ export function SignConfirmModal({
           </div>
 
           <p className="mt-5 text-[12px] text-fg-faint leading-relaxed">
-            Signing this order does not move funds yet. The trade settles only
-            when a taker fills your order on-chain. You can cancel anytime
-            before expiry.
+            {t("trade.signModal.disclosure")}
           </p>
         </div>
 
         <footer className="px-5 py-4 border-t border-line bg-bg/40 flex flex-col gap-2">
           {!allOk ? (
             <div className="px-3 py-2 rounded-md bg-sell/10 border border-sell/30 text-[12px] text-sell">
-              One or more checks failed. Do not sign unless you understand the
-              risk.
+              {t("trade.signModal.checksFailed")}
             </div>
           ) : null}
           <div className="flex items-center gap-2">
@@ -119,7 +118,7 @@ export function SignConfirmModal({
               className="flex-1 py-2.5 rounded-md border border-line text-[14px] text-fg-dim hover:text-fg hover:border-line-strong"
               disabled={signing}
             >
-              Cancel
+              {t("trade.signModal.cancel")}
             </button>
             <SignButton
               allOk={allOk}
@@ -136,12 +135,12 @@ export function SignConfirmModal({
 }
 
 function Summary({ ctx }: { ctx: SignConfirmContext }) {
+  const t = useTranslator();
   const { order, baseToken, quoteToken, side } = ctx;
   const isSellingBase = side === "sell";
   const giveToken = isSellingBase ? baseToken : quoteToken;
   const getToken = isSellingBase ? quoteToken : baseToken;
-  const giveAmount = isSellingBase ? order.makerAmount : order.makerAmount;
-  const getAmount = isSellingBase ? order.takerAmount : order.takerAmount;
+  const giveAmount = order.makerAmount;
 
   // fee comes off the taker payment when feeSide == makerToken (Case A)
   const feeIsOnThisOrder = order.feeSide.toLowerCase() === order.makerToken.toLowerCase();
@@ -152,18 +151,22 @@ function Summary({ ctx }: { ctx: SignConfirmContext }) {
   const expiryDate = new Date(Number(order.expiry) * 1000);
   const expiryStr = expiryDate.toISOString().replace("T", " ").slice(0, 16) + " UTC";
 
+  const headlineVerb = isSellingBase
+    ? t("trade.signModal.headlineSell")
+    : t("trade.signModal.headlineBuy");
+
   return (
     <div>
       <div className="text-[12px] text-fg-faint uppercase tracking-[0.14em] mb-2">
-        Action
+        {t("trade.signModal.action")}
       </div>
       <div className="text-[20px] leading-tight font-medium mb-4">
-        {isSellingBase ? "Sell" : "Buy"}{" "}
+        {headlineVerb}{" "}
         <span className="font-mono tnum text-fg">
           {fmt(giveAmount, giveToken.decimals)}
         </span>{" "}
         {giveToken.symbol}{" "}
-        <span className="text-fg-faint">for at least</span>{" "}
+        <span className="text-fg-faint">{t("trade.signModal.forAtLeast")}</span>{" "}
         <span className="font-mono tnum text-fg">
           {fmt(youReceive, getToken.decimals)}
         </span>{" "}
@@ -171,18 +174,18 @@ function Summary({ ctx }: { ctx: SignConfirmContext }) {
       </div>
 
       <dl className="grid grid-cols-[140px_1fr] gap-y-2 text-[13px]">
-        <dt className="text-fg-faint">You give</dt>
+        <dt className="text-fg-faint">{t("trade.signModal.youGive")}</dt>
         <dd className="font-mono tnum">
           {fmt(giveAmount, giveToken.decimals)} {giveToken.symbol}
         </dd>
 
-        <dt className="text-fg-faint">You receive</dt>
+        <dt className="text-fg-faint">{t("trade.signModal.youReceive")}</dt>
         <dd className="font-mono tnum">
           {fmt(youReceive, getToken.decimals)} {getToken.symbol}{" "}
-          <span className="text-fg-faint">(after fee)</span>
+          <span className="text-fg-faint">{t("trade.signModal.afterFee")}</span>
         </dd>
 
-        <dt className="text-fg-faint">Protocol fee</dt>
+        <dt className="text-fg-faint">{t("trade.signModal.protocolFee")}</dt>
         <dd className="font-mono tnum">
           {fmt(fee, getToken.decimals)} {getToken.symbol}{" "}
           <span className="text-fg-faint">
@@ -190,13 +193,13 @@ function Summary({ ctx }: { ctx: SignConfirmContext }) {
           </span>
         </dd>
 
-        <dt className="text-fg-faint">Expires</dt>
+        <dt className="text-fg-faint">{t("trade.signModal.expires")}</dt>
         <dd>{expiryStr}</dd>
 
-        <dt className="text-fg-faint">Maker</dt>
+        <dt className="text-fg-faint">{t("trade.signModal.maker")}</dt>
         <dd className="font-mono text-fg-dim">
           {short(order.maker)}{" "}
-          <span className="text-fg-faint">(your wallet)</span>
+          <span className="text-fg-faint">{t("trade.signModal.yourWallet")}</span>
         </dd>
       </dl>
     </div>
@@ -245,6 +248,7 @@ function SignButton({
   setHoldMs: (n: number) => void;
   onConfirm: () => void;
 }) {
+  const t = useTranslator();
   // When all rules pass: simple click. When any rule fails: hold-3s override.
   if (allOk) {
     return (
@@ -253,7 +257,7 @@ function SignButton({
         disabled={signing}
         className="flex-1 py-2.5 rounded-md bg-accent text-bg font-medium text-[14px] disabled:opacity-60 disabled:cursor-not-allowed"
       >
-        {signing ? "Waiting for wallet…" : "Sign Order"}
+        {signing ? t("trade.placeOrder.waitingForWallet") : t("trade.placeOrder.signOrder")}
       </button>
     );
   }
@@ -272,7 +276,9 @@ function SignButton({
         aria-hidden="true"
       />
       <span className="relative">
-        {signing ? "Signing…" : "Hold 3s to sign anyway"}
+        {signing
+          ? t("trade.signModal.signingOverride")
+          : t("trade.signModal.holdToSign")}
       </span>
     </button>
   );
@@ -297,7 +303,10 @@ function holdStart(setHoldMs: (n: number) => void, onConfirm: () => void) {
   setTimeout(() => clearInterval(id), 4000);
 }
 
-function evaluateRules(ctx: SignConfirmContext): RuleResult[] {
+function evaluateRules(
+  ctx: SignConfirmContext,
+  t: ReturnType<typeof useTranslator>,
+): RuleResult[] {
   const officialDex = SCENTDEX_V5_ADDRESS[ctx.chainId];
 
   const domainOk = Boolean(
@@ -324,31 +333,38 @@ function evaluateRules(ctx: SignConfirmContext): RuleResult[] {
     {
       id: "domain",
       label: officialDex
-        ? `Domain: SCENTDEX on chainId ${ctx.chainId}`
-        : "No SCENTDEX V5 contract configured for this chain",
+        ? t("trade.signModal.ruleDomainOk").replace(
+            "{chainId}",
+            String(ctx.chainId),
+          )
+        : t("trade.signModal.ruleDomainFail"),
       ok: domainOk,
       detail: officialDex ? short(officialDex) : undefined,
     },
     {
       id: "self",
       label: selfOk
-        ? "You are signing on your own wallet"
-        : "Order maker does not match the connected wallet",
+        ? t("trade.signModal.ruleSelfOk")
+        : t("trade.signModal.ruleSelfFail"),
       ok: selfOk,
-      detail: selfOk ? short(ctx.walletAddress) : `wallet ${short(ctx.walletAddress)} ≠ maker ${short(ctx.order.maker)}`,
+      detail: selfOk
+        ? short(ctx.walletAddress)
+        : t("trade.signModal.ruleSelfDetail")
+            .replace("{wallet}", short(ctx.walletAddress))
+            .replace("{maker}", short(ctx.order.maker)),
     },
     {
       id: "floor",
       label: floorOk
-        ? "Taker amount is above the safety floor"
-        : "Taker amount is below the safety floor (likely a bait order)",
+        ? t("trade.signModal.ruleFloorOk")
+        : t("trade.signModal.ruleFloorFail"),
       ok: floorOk,
     },
     {
       id: "ratio",
       label: ratioOk
-        ? "Price ratio is within safe bounds"
-        : "Price ratio exceeds the safety cap (extreme price)",
+        ? t("trade.signModal.ruleRatioOk")
+        : t("trade.signModal.ruleRatioFail"),
       ok: ratioOk,
     },
   ];

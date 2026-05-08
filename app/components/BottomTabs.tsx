@@ -208,7 +208,7 @@ function MyOrders({
       {visible.length === 0 ? (
         <div className="px-4 py-12 text-center text-[13px] text-fg-faint">
           {loading
-            ? "loading…"
+            ? t("trade.myOrders.loading")
             : historical
             ? t("trade.myOrders.emptyHistorical")
             : t("trade.myOrders.empty")}
@@ -476,12 +476,12 @@ function ApprovalBadge({ symbol }: { symbol: string }) {
 function fmtPrice(n: number): string {
   if (!Number.isFinite(n) || n === 0) return "0";
   if (n < 0.001) return n.toExponential(2);
-  return n.toLocaleString(undefined, { maximumFractionDigits: 6 });
+  return n.toLocaleString("en-US", { maximumFractionDigits: 6 });
 }
 
 function fmtAmount(n: number): string {
   if (!Number.isFinite(n)) return "0";
-  return n.toLocaleString(undefined, { maximumFractionDigits: 4 });
+  return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
 }
 
 function History({ orders, loading }: { orders: ApiOrder[]; loading: boolean }) {
@@ -696,23 +696,18 @@ function PermitBody({
   status: ReturnType<typeof useTokenStatus>;
 }) {
   const t = useTranslator();
-  const balance = formatUnits(status.balance, token.decimals);
-  const balanceShort = trimTrailingZeros(balance, 4);
+  const balance = formatBalanceWithCommas(status.balance, token.decimals);
 
   const isFullyApproved = status.isFullyApproved;
   const isPartial = !isFullyApproved && status.isErc20Approved;
 
-  let buttonLabel: string;
-  if (status.approveStep === "step1") {
-    buttonLabel = t("trade.approvedTokens.approvingStep1");
-  } else if (status.approveStep === "step2") {
-    buttonLabel = t("trade.approvedTokens.approvingStep2");
-  } else if (isFullyApproved) {
-    buttonLabel = t("trade.approvedTokens.reApprove");
+  let statusCopy: string;
+  if (isFullyApproved) {
+    statusCopy = t("trade.approvedTokens.approved");
   } else if (isPartial) {
-    buttonLabel = t("trade.approvedTokens.continueApproval");
+    statusCopy = t("trade.approvedTokens.partialDescription");
   } else {
-    buttonLabel = t("trade.approvedTokens.approve").replace("{symbol}", token.symbol);
+    statusCopy = t("trade.approvedTokens.statusNotApproved");
   }
 
   return (
@@ -722,7 +717,7 @@ function PermitBody({
           {t("trade.approvedTokens.balance")}
         </span>
         <span className="font-mono tnum text-fg">
-          {status.balanceLoading ? "…" : balanceShort} {token.symbol}
+          {status.balanceLoading ? "…" : balance} {token.symbol}
         </span>
       </div>
 
@@ -737,45 +732,44 @@ function PermitBody({
         />
       </div>
 
+      <p className="text-[12px] text-fg-dim mb-3 leading-relaxed">
+        {statusCopy}
+      </p>
+
       {isFullyApproved ? (
-        <>
-          <div className="mb-2 text-[12px] text-fg-dim leading-relaxed">
-            {t("trade.approvedTokens.approved")}
-          </div>
-          <div className="flex items-center justify-end">
-            <button
-              onClick={status.approve}
-              disabled={status.isApproving}
-              className="px-3 py-1 rounded text-[12px] text-fg-dim border border-line hover:text-fg hover:border-line-strong disabled:opacity-50"
-            >
-              {status.isApproving ? t("trade.approvedTokens.reApproving") : buttonLabel}
-            </button>
-          </div>
-        </>
-      ) : (
-        <>
-          <p className="text-[12px] text-fg-dim mb-3 leading-relaxed">
-            {isPartial
-              ? t("trade.approvedTokens.partialDescription")
-              : t("trade.approvedTokens.notApproved").replace("{symbol}", token.symbol)}
-          </p>
-          <button
-            onClick={status.approve}
-            disabled={status.isApproving}
-            className="w-full py-2 rounded-md bg-accent text-bg font-medium text-[13px] disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {buttonLabel}
-          </button>
-        </>
-      )}
+        <button
+          onClick={status.revoke}
+          disabled={status.isRevoking}
+          className="w-full py-2 rounded-md border border-line text-[13px] text-fg-dim hover:text-fg hover:border-sell disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          {status.isRevoking
+            ? t("trade.approvedTokens.revoking")
+            : t("trade.approvedTokens.revoke")}
+        </button>
+      ) : null}
 
       {status.approveError ? (
         <p className="mt-2 text-[11px] text-sell">
           {status.approveError.message.slice(0, 120)}
         </p>
       ) : null}
+      {status.revokeError ? (
+        <p className="mt-2 text-[11px] text-sell">
+          {status.revokeError.message.slice(0, 120)}
+        </p>
+      ) : null}
     </>
   );
+}
+
+function formatBalanceWithCommas(raw: bigint, decimals: number): string {
+  const whole = raw / 10n ** BigInt(decimals);
+  const fracRaw = raw % 10n ** BigInt(decimals);
+  const wholeStr = whole.toLocaleString("en-US");
+  if (fracRaw === 0n) return wholeStr;
+  const fracPadded = fracRaw.toString().padStart(decimals, "0").slice(0, 4);
+  const fracTrimmed = fracPadded.replace(/0+$/, "");
+  return fracTrimmed.length === 0 ? wholeStr : `${wholeStr}.${fracTrimmed}`;
 }
 
 function StepRow({ label, done }: { label: string; done: boolean }) {

@@ -133,6 +133,9 @@ export type Dictionary = {
   "trade.approvedTokens.approvingStep2": string;
   "trade.approvedTokens.continueApproval": string;
   "trade.approvedTokens.partialDescription": string;
+  "trade.approvedTokens.statusNotApproved": string;
+  "trade.approvedTokens.revoke": string;
+  "trade.approvedTokens.revoking": string;
 
   // Trade page — MyOrders
   "trade.myOrders.active": string;
@@ -149,6 +152,7 @@ export type Dictionary = {
   "trade.myOrders.filled": string;
   "trade.myOrders.empty": string;
   "trade.myOrders.emptyHistorical": string;
+  "trade.myOrders.loading": string;
   "trade.myOrders.connect": string;
   "trade.myOrders.cancelling": string;
   "trade.myOrders.needsApproval": string;
@@ -172,6 +176,9 @@ export type Dictionary = {
   "trade.orderBook.hiddenTooltip": string;
   "trade.orderBook.hidden": string;
   "trade.orderBook.spread": string;
+  "trade.orderBook.statusLoading": string;
+  "trade.orderBook.statusEmpty": string;
+  "trade.orderBook.statusAggregated": string;
 
   // Trade page — PlaceOrder
   "trade.placeOrder.title": string;
@@ -195,12 +202,51 @@ export type Dictionary = {
   "trade.placeOrder.balanceConnect": string;
   "trade.placeOrder.notDeployedHere": string;
   "trade.placeOrder.wrongNetworkBalance": string;
+  "trade.placeOrder.approveAndSign": string;
+  "trade.placeOrder.approvingStep1": string;
+  "trade.placeOrder.approvingStep2": string;
+  "trade.placeOrder.orderSigned": string;
+  "trade.placeOrder.orderPosted": string;
 
   // Trade page — RecentTrades
   "trade.recentTrades.title": string;
   "trade.recentTrades.price": string;
   "trade.recentTrades.amount": string;
   "trade.recentTrades.time": string;
+  "trade.recentTrades.live": string;
+  "trade.recentTrades.syncing": string;
+  "trade.recentTrades.loading": string;
+  "trade.recentTrades.empty": string;
+
+  // Trade page — SignConfirmModal
+  "trade.signModal.title": string;
+  "trade.signModal.close": string;
+  "trade.signModal.action": string;
+  "trade.signModal.headlineSell": string;
+  "trade.signModal.headlineBuy": string;
+  "trade.signModal.forAtLeast": string;
+  "trade.signModal.youGive": string;
+  "trade.signModal.youReceive": string;
+  "trade.signModal.afterFee": string;
+  "trade.signModal.protocolFee": string;
+  "trade.signModal.expires": string;
+  "trade.signModal.maker": string;
+  "trade.signModal.yourWallet": string;
+  "trade.signModal.phishingChecks": string;
+  "trade.signModal.disclosure": string;
+  "trade.signModal.checksFailed": string;
+  "trade.signModal.cancel": string;
+  "trade.signModal.holdToSign": string;
+  "trade.signModal.signingOverride": string;
+  "trade.signModal.ruleDomainOk": string;
+  "trade.signModal.ruleDomainFail": string;
+  "trade.signModal.ruleSelfOk": string;
+  "trade.signModal.ruleSelfFail": string;
+  "trade.signModal.ruleSelfDetail": string;
+  "trade.signModal.ruleFloorOk": string;
+  "trade.signModal.ruleFloorFail": string;
+  "trade.signModal.ruleRatioOk": string;
+  "trade.signModal.ruleRatioFail": string;
 
   // Trade page — StatsBar
   "trade.statsBar.volume24h": string;
@@ -366,6 +412,10 @@ const en: Dictionary = {
   "trade.approvedTokens.continueApproval": "Finish approval",
   "trade.approvedTokens.partialDescription":
     "Step 1 is done. One more transaction (Permit2 → SCENTDEX) is needed before fills can settle.",
+  "trade.approvedTokens.statusNotApproved":
+    "Not approved yet. SCENTDEX will request approval automatically the next time you sign an order — no need to approve from this tab.",
+  "trade.approvedTokens.revoke": "Revoke approval",
+  "trade.approvedTokens.revoking": "Revoking…",
 
   // Trade page — MyOrders
   "trade.myOrders.active": "Active ({count})",
@@ -382,6 +432,7 @@ const en: Dictionary = {
   "trade.myOrders.filled": "Filled",
   "trade.myOrders.empty": "No active orders. Place your first order on the right.",
   "trade.myOrders.emptyHistorical": "No historical orders yet.",
+  "trade.myOrders.loading": "Loading orders…",
   "trade.myOrders.connect": "Connect your wallet to see your orders.",
   "trade.myOrders.cancelling": "Cancelling…",
   "trade.myOrders.needsApproval": "Approval needed",
@@ -407,6 +458,9 @@ const en: Dictionary = {
     "These orders' makers have insufficient balance or Permit2 allowance — fills would revert. Hidden so you don't waste gas.",
   "trade.orderBook.hidden": "{count} {orders} hidden (insufficient maker balance / allowance)",
   "trade.orderBook.spread": "Spread",
+  "trade.orderBook.statusLoading": "loading…",
+  "trade.orderBook.statusEmpty": "empty",
+  "trade.orderBook.statusAggregated": "aggregated",
 
   // Trade page — PlaceOrder
   "trade.placeOrder.title": "Place Order",
@@ -430,12 +484,58 @@ const en: Dictionary = {
   "trade.placeOrder.balanceConnect": "Connect wallet to see your balance",
   "trade.placeOrder.notDeployedHere": "—",
   "trade.placeOrder.wrongNetworkBalance": "Switch to Sepolia to see your balance",
+  "trade.placeOrder.approveAndSign": "Approve & sign {symbol}",
+  "trade.placeOrder.approvingStep1": "Approving {symbol} (1/2)…",
+  "trade.placeOrder.approvingStep2": "Approving {symbol} (2/2)…",
+  "trade.placeOrder.orderSigned": "Order signed. Signature:",
+  "trade.placeOrder.orderPosted":
+    "Posted to the book. The taker side will see your order within a poll cycle.",
 
   // Trade page — RecentTrades
   "trade.recentTrades.title": "Recent Trades",
   "trade.recentTrades.price": "Price",
   "trade.recentTrades.amount": "Amount",
   "trade.recentTrades.time": "Time",
+  "trade.recentTrades.live": "live",
+  "trade.recentTrades.syncing": "syncing",
+  "trade.recentTrades.loading": "Loading recent fills…",
+  "trade.recentTrades.empty": "No fills in the last 24 hours.",
+
+  // Trade page — SignConfirmModal
+  "trade.signModal.title": "Confirm order signature",
+  "trade.signModal.close": "Close",
+  "trade.signModal.action": "Action",
+  "trade.signModal.headlineSell": "Sell",
+  "trade.signModal.headlineBuy": "Buy",
+  "trade.signModal.forAtLeast": "for at least",
+  "trade.signModal.youGive": "You give",
+  "trade.signModal.youReceive": "You receive",
+  "trade.signModal.afterFee": "(after fee)",
+  "trade.signModal.protocolFee": "Protocol fee",
+  "trade.signModal.expires": "Expires",
+  "trade.signModal.maker": "Maker",
+  "trade.signModal.yourWallet": "(your wallet)",
+  "trade.signModal.phishingChecks": "Phishing checks",
+  "trade.signModal.disclosure":
+    "Signing this order does not move funds yet. The trade settles only when a taker fills your order on-chain. You can cancel anytime before expiry.",
+  "trade.signModal.checksFailed":
+    "One or more checks failed. Do not sign unless you understand the risk.",
+  "trade.signModal.cancel": "Cancel",
+  "trade.signModal.holdToSign": "Hold 3s to sign anyway",
+  "trade.signModal.signingOverride": "Signing…",
+  "trade.signModal.ruleDomainOk": "Domain: SCENTDEX on chainId {chainId}",
+  "trade.signModal.ruleDomainFail":
+    "No SCENTDEX V5 contract configured for this chain",
+  "trade.signModal.ruleSelfOk": "You are signing on your own wallet",
+  "trade.signModal.ruleSelfFail":
+    "Order maker does not match the connected wallet",
+  "trade.signModal.ruleSelfDetail": "wallet {wallet} ≠ maker {maker}",
+  "trade.signModal.ruleFloorOk": "Taker amount is above the safety floor",
+  "trade.signModal.ruleFloorFail":
+    "Taker amount is below the safety floor (likely a bait order)",
+  "trade.signModal.ruleRatioOk": "Price ratio is within safe bounds",
+  "trade.signModal.ruleRatioFail":
+    "Price ratio exceeds the safety cap (extreme price)",
 
   // Trade page — StatsBar
   "trade.statsBar.volume24h": "24H Volume",
@@ -605,6 +705,10 @@ const ja: Dictionary = {
   "trade.approvedTokens.continueApproval": "承認を完了する",
   "trade.approvedTokens.partialDescription":
     "ステップ 1 は完了しました。約定可能にするには、もう 1 件のトランザクション（Permit2 → SCENTDEX）が必要です。",
+  "trade.approvedTokens.statusNotApproved":
+    "未承認です。次に注文に署名するときに自動で承認が要求されるので、このタブから承認する必要はありません。",
+  "trade.approvedTokens.revoke": "承認を解除",
+  "trade.approvedTokens.revoking": "解除中…",
 
   // Trade page — MyOrders
   "trade.myOrders.active": "有効 ({count})",
@@ -621,6 +725,7 @@ const ja: Dictionary = {
   "trade.myOrders.filled": "約定済み",
   "trade.myOrders.empty": "アクティブな注文はありません。右側から最初の注文を出してください。",
   "trade.myOrders.emptyHistorical": "過去の注文はまだありません。",
+  "trade.myOrders.loading": "注文を読み込み中…",
   "trade.myOrders.connect": "注文を表示するにはウォレットを接続してください。",
   "trade.myOrders.cancelling": "キャンセル中…",
   "trade.myOrders.needsApproval": "承認が必要",
@@ -646,6 +751,9 @@ const ja: Dictionary = {
     "これらの注文のメイカーは残高または Permit2 の許可が不足しています。リバートされるため非表示にしています。",
   "trade.orderBook.hidden": "{count} 件の注文が非表示（メイカーの残高・許可が不足）",
   "trade.orderBook.spread": "スプレッド",
+  "trade.orderBook.statusLoading": "読込中…",
+  "trade.orderBook.statusEmpty": "なし",
+  "trade.orderBook.statusAggregated": "集計済み",
 
   // Trade page — PlaceOrder
   "trade.placeOrder.title": "注文を出す",
@@ -669,12 +777,58 @@ const ja: Dictionary = {
   "trade.placeOrder.balanceConnect": "残高を表示するにはウォレットを接続してください",
   "trade.placeOrder.notDeployedHere": "—",
   "trade.placeOrder.wrongNetworkBalance": "残高を表示するには Sepolia に切り替えてください",
+  "trade.placeOrder.approveAndSign": "{symbol} を承認して署名",
+  "trade.placeOrder.approvingStep1": "{symbol} を承認中（1/2）…",
+  "trade.placeOrder.approvingStep2": "{symbol} を承認中（2/2）…",
+  "trade.placeOrder.orderSigned": "注文に署名しました。署名:",
+  "trade.placeOrder.orderPosted":
+    "板に投稿しました。次のポーリングでテイカー側にも表示されます。",
 
   // Trade page — RecentTrades
   "trade.recentTrades.title": "最近の取引",
   "trade.recentTrades.price": "価格",
   "trade.recentTrades.amount": "数量",
   "trade.recentTrades.time": "時刻",
+  "trade.recentTrades.live": "ライブ",
+  "trade.recentTrades.syncing": "同期中",
+  "trade.recentTrades.loading": "最近の約定を読み込み中…",
+  "trade.recentTrades.empty": "過去 24 時間に約定はありません。",
+
+  // Trade page — SignConfirmModal
+  "trade.signModal.title": "注文署名の確認",
+  "trade.signModal.close": "閉じる",
+  "trade.signModal.action": "操作内容",
+  "trade.signModal.headlineSell": "売却",
+  "trade.signModal.headlineBuy": "購入",
+  "trade.signModal.forAtLeast": "→ 受取（最低）",
+  "trade.signModal.youGive": "差し出す",
+  "trade.signModal.youReceive": "受取",
+  "trade.signModal.afterFee": "（手数料控除後）",
+  "trade.signModal.protocolFee": "プロトコル手数料",
+  "trade.signModal.expires": "有効期限",
+  "trade.signModal.maker": "メイカー",
+  "trade.signModal.yourWallet": "（あなたのウォレット）",
+  "trade.signModal.phishingChecks": "フィッシング検査",
+  "trade.signModal.disclosure":
+    "署名してもこの時点では資金は動きません。テイカーがオンチェーンで約定したときに初めて取引が成立します。有効期限内であればいつでもキャンセル可能です。",
+  "trade.signModal.checksFailed":
+    "1 つ以上のチェックに失敗しています。リスクを理解していない場合は署名しないでください。",
+  "trade.signModal.cancel": "キャンセル",
+  "trade.signModal.holdToSign": "3 秒長押しで署名",
+  "trade.signModal.signingOverride": "署名中…",
+  "trade.signModal.ruleDomainOk": "ドメイン: chainId {chainId} の SCENTDEX",
+  "trade.signModal.ruleDomainFail":
+    "このチェーンには SCENTDEX V5 が設定されていません",
+  "trade.signModal.ruleSelfOk": "ご自身のウォレットで署名しています",
+  "trade.signModal.ruleSelfFail":
+    "注文のメイカーが接続中のウォレットと一致しません",
+  "trade.signModal.ruleSelfDetail": "ウォレット {wallet} ≠ メイカー {maker}",
+  "trade.signModal.ruleFloorOk": "テイカー額は安全フロアを上回っています",
+  "trade.signModal.ruleFloorFail":
+    "テイカー額が安全フロアを下回っています（おとり注文の可能性）",
+  "trade.signModal.ruleRatioOk": "価格比は安全範囲内です",
+  "trade.signModal.ruleRatioFail":
+    "価格比が安全上限を超えています（異常価格）",
 
   // Trade page — StatsBar
   "trade.statsBar.volume24h": "24H 出来高",

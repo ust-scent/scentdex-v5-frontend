@@ -21,7 +21,7 @@ export function TradeClient({ initialLocale }: { initialLocale: SupportedLocale 
         <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr_1fr] gap-3 px-3 sm:px-6 py-3 sm:py-4">
           <OrderBook pair={pair} />
           <PlaceOrder pair={pair} />
-          <RecentTrades />
+          <RecentTrades pair={pair} />
         </div>
 
         <div className="px-3 sm:px-6 pb-6 sm:pb-8">

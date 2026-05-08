@@ -146,7 +146,11 @@ export function OrderBook({ pair }: { pair: Pair }) {
           {t("trade.orderBook.title")}
         </h2>
         <div className="text-[11px] text-fg-faint font-mono">
-          {loading ? "loading…" : empty ? "empty" : "aggregated"}
+          {loading
+            ? t("trade.orderBook.statusLoading")
+            : empty
+            ? t("trade.orderBook.statusEmpty")
+            : t("trade.orderBook.statusAggregated")}
         </div>
       </header>
 
