@@ -8,7 +8,7 @@ import {
 import { TOKENS, type Pair } from "@/lib/tokens";
 import { useEffect, useMemo, useState } from "react";
 import { formatUnits, type Address } from "viem";
-import { useChainId } from "wagmi";
+import { useAccount, useChainId } from "wagmi";
 import { useTranslator } from "@/lib/locale-context";
 
 /**
@@ -54,6 +54,7 @@ type Row = {
 export function OrderBook({ pair }: { pair: Pair }) {
   const t = useTranslator();
   const chainId = useChainId();
+  const { address: account } = useAccount();
   const [orders, setOrders] = useState<ApiOrder[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -89,14 +90,36 @@ export function OrderBook({ pair }: { pair: Pair }) {
   // Reads each maker's balance + Permit2 allowance via multicall and hides
   // any order where either has dropped below the sell amount, so takers
   // never burn gas on an order that's already dead.
+  //
+  // Exception: keep the connected maker's *own* orders visible even when
+  // unfillable so they can see + cancel their order and take the action
+  // (e.g. approve Permit2) needed to make it fillable. The unfillable
+  // counter at the bottom still reflects the true count.
   const fillability = useOrderFillability(orders);
 
+  const lowerAccount = account?.toLowerCase();
   const fillableOrders = useMemo(
     () =>
-      orders.filter(
-        (o) => fillability.status[o.orderHash] !== "unfillable",
-      ),
-    [orders, fillability.status],
+      orders.filter((o) => {
+        if (fillability.status[o.orderHash] !== "unfillable") return true;
+        return Boolean(
+          lowerAccount && o.order.maker.toLowerCase() === lowerAccount,
+        );
+      }),
+    [orders, fillability.status, lowerAccount],
+  );
+
+  const ownUnfillableCount = useMemo(() => {
+    if (!lowerAccount) return 0;
+    return orders.reduce((acc, o) => {
+      const isOwn = o.order.maker.toLowerCase() === lowerAccount;
+      const isUnfillable = fillability.status[o.orderHash] === "unfillable";
+      return acc + (isOwn && isUnfillable ? 1 : 0);
+    }, 0);
+  }, [orders, fillability.status, lowerAccount]);
+  const othersUnfillableCount = Math.max(
+    fillability.unfillableCount - ownUnfillableCount,
+    0,
   );
 
   const { asks, bids, midPrice, spread, spreadBps } = useMemo(
@@ -174,7 +197,7 @@ export function OrderBook({ pair }: { pair: Pair }) {
         </div>
       )}
 
-      {fillability.unfillableCount > 0 ? (
+      {othersUnfillableCount > 0 ? (
         <div
           className="px-4 py-2 text-[11px] text-fg-faint border-t border-line bg-white/[0.015] flex items-center gap-1.5"
           title={t("trade.orderBook.hiddenTooltip")}
@@ -182,8 +205,8 @@ export function OrderBook({ pair }: { pair: Pair }) {
           <span aria-hidden="true">⚠</span>
           <span>
             {t("trade.orderBook.hidden")
-              .replace("{count}", String(fillability.unfillableCount))
-              .replace("{orders}", fillability.unfillableCount === 1 ? "order" : "orders")}
+              .replace("{count}", String(othersUnfillableCount))
+              .replace("{orders}", othersUnfillableCount === 1 ? "order" : "orders")}
           </span>
         </div>
       ) : null}

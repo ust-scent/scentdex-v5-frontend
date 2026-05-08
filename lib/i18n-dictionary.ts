@@ -141,6 +141,12 @@ export type Dictionary = {
   "trade.myOrders.cancel": string;
   "trade.myOrders.amount": string;
   "trade.myOrders.filled": string;
+  "trade.myOrders.empty": string;
+  "trade.myOrders.emptyHistorical": string;
+  "trade.myOrders.connect": string;
+  "trade.myOrders.cancelling": string;
+  "trade.myOrders.needsApproval": string;
+  "trade.myOrders.needsApprovalTooltip": string;
 
   // Trade page — History
   "trade.history.time": string;
@@ -151,6 +157,8 @@ export type Dictionary = {
   "trade.history.role": string;
   "trade.history.counterparty": string;
   "trade.history.protocolFee": string;
+  "trade.history.empty": string;
+  "trade.history.connect": string;
 
   // Trade page — OrderBook
   "trade.orderBook.title": string;
@@ -177,6 +185,9 @@ export type Dictionary = {
   "trade.placeOrder.couldNotBuild": string;
   "trade.placeOrder.buy": string;
   "trade.placeOrder.sell": string;
+  "trade.placeOrder.balances": string;
+  "trade.placeOrder.balanceConnect": string;
+  "trade.placeOrder.notDeployedHere": string;
 
   // Trade page — RecentTrades
   "trade.recentTrades.title": string;
@@ -355,6 +366,13 @@ const en: Dictionary = {
   "trade.myOrders.cancel": "Cancel",
   "trade.myOrders.amount": "Amount",
   "trade.myOrders.filled": "Filled",
+  "trade.myOrders.empty": "No active orders. Place your first order on the right.",
+  "trade.myOrders.emptyHistorical": "No historical orders yet.",
+  "trade.myOrders.connect": "Connect your wallet to see your orders.",
+  "trade.myOrders.cancelling": "Cancelling…",
+  "trade.myOrders.needsApproval": "Approval needed",
+  "trade.myOrders.needsApprovalTooltip":
+    "This order is signed but won't fill until you approve Permit2 for {symbol} (Approved Tokens tab).",
 
   // Trade page — History
   "trade.history.time": "Time",
@@ -365,6 +383,8 @@ const en: Dictionary = {
   "trade.history.role": "Role",
   "trade.history.counterparty": "Counter-party",
   "trade.history.protocolFee": "Protocol Fee",
+  "trade.history.empty": "No fills yet.",
+  "trade.history.connect": "Connect your wallet to see your trade history.",
 
   // Trade page — OrderBook
   "trade.orderBook.title": "Order Book",
@@ -392,6 +412,9 @@ const en: Dictionary = {
   "trade.placeOrder.couldNotBuild": "Could not build order amounts",
   "trade.placeOrder.buy": "Buy {base}",
   "trade.placeOrder.sell": "Sell {base}",
+  "trade.placeOrder.balances": "Balance",
+  "trade.placeOrder.balanceConnect": "Connect wallet to see your balance",
+  "trade.placeOrder.notDeployedHere": "—",
 
   // Trade page — RecentTrades
   "trade.recentTrades.title": "Recent Trades",
@@ -574,6 +597,13 @@ const ja: Dictionary = {
   "trade.myOrders.cancel": "キャンセル",
   "trade.myOrders.amount": "数量",
   "trade.myOrders.filled": "約定済み",
+  "trade.myOrders.empty": "アクティブな注文はありません。右側から最初の注文を出してください。",
+  "trade.myOrders.emptyHistorical": "過去の注文はまだありません。",
+  "trade.myOrders.connect": "注文を表示するにはウォレットを接続してください。",
+  "trade.myOrders.cancelling": "キャンセル中…",
+  "trade.myOrders.needsApproval": "承認が必要",
+  "trade.myOrders.needsApprovalTooltip":
+    "署名済みですが、{symbol} の Permit2 承認が完了するまで約定しません（「承認済みトークン」タブで承認してください）。",
 
   // Trade page — History
   "trade.history.time": "時刻",
@@ -584,6 +614,8 @@ const ja: Dictionary = {
   "trade.history.role": "役割",
   "trade.history.counterparty": "相手方",
   "trade.history.protocolFee": "プロトコル手数料",
+  "trade.history.empty": "約定履歴はまだありません。",
+  "trade.history.connect": "取引履歴を表示するにはウォレットを接続してください。",
 
   // Trade page — OrderBook
   "trade.orderBook.title": "板情報",
@@ -611,6 +643,9 @@ const ja: Dictionary = {
   "trade.placeOrder.couldNotBuild": "注文金額の計算に失敗しました",
   "trade.placeOrder.buy": "{base} を買う",
   "trade.placeOrder.sell": "{base} を売る",
+  "trade.placeOrder.balances": "残高",
+  "trade.placeOrder.balanceConnect": "残高を表示するにはウォレットを接続してください",
+  "trade.placeOrder.notDeployedHere": "—",
 
   // Trade page — RecentTrades
   "trade.recentTrades.title": "最近の取引",

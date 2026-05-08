@@ -6,6 +6,7 @@ import {
 } from "@/app/components/SignConfirmModal";
 import { useTranslator } from "@/lib/locale-context";
 import { SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
+import { useTokenStatus } from "@/lib/hooks/useTokenStatus";
 import {
   buildAmounts,
   buildDomain,
@@ -14,8 +15,9 @@ import {
   randomSalt,
   type Order,
 } from "@/lib/order";
-import { TOKENS, feeConfig, type Pair } from "@/lib/tokens";
+import { TOKENS, feeConfig, type Pair, type Token } from "@/lib/tokens";
 import { useMemo, useState } from "react";
+import { formatUnits } from "viem";
 import { useAccount, useChainId, useSignTypedData } from "wagmi";
 
 type Side = "buy" | "sell";
@@ -189,6 +191,9 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
       </header>
 
       <div className="p-4 flex flex-col gap-4 flex-1">
+        {/* Wallet balances for the current pair */}
+        <BalanceStrip baseToken={baseToken} quoteToken={quoteToken} />
+
         {/* Side */}
         <div className="grid grid-cols-2 gap-2">
           <button
@@ -363,6 +368,59 @@ function Row({
 function fmtNum(n: number): string {
   if (!Number.isFinite(n) || n === 0) return "0.00";
   return n.toLocaleString(undefined, { maximumFractionDigits: 6 });
+}
+
+function BalanceStrip({
+  baseToken,
+  quoteToken,
+}: {
+  baseToken: Token;
+  quoteToken: Token;
+}) {
+  const t = useTranslator();
+  const { isConnected } = useAccount();
+
+  return (
+    <div className="px-3 py-2 rounded-md border border-line bg-white/[0.015]">
+      <div className="text-[10px] uppercase tracking-[0.14em] text-fg-faint mb-1.5">
+        {t("trade.placeOrder.balances")}
+      </div>
+      {!isConnected ? (
+        <div className="text-[12px] text-fg-faint">
+          {t("trade.placeOrder.balanceConnect")}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          <BalanceCell token={baseToken} />
+          <BalanceCell token={quoteToken} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BalanceCell({ token }: { token: Token }) {
+  const t = useTranslator();
+  const status = useTokenStatus(token);
+  const hasAddress = Boolean(status.tokenAddress);
+  const display = !hasAddress
+    ? t("trade.placeOrder.notDeployedHere")
+    : status.balanceLoading
+    ? "…"
+    : trimZeros(formatUnits(status.balance, token.decimals), 4);
+  return (
+    <div className="flex items-baseline justify-between gap-2 text-[12px]">
+      <span className="text-fg-faint">{token.symbol}</span>
+      <span className="font-mono tnum text-fg">{display}</span>
+    </div>
+  );
+}
+
+function trimZeros(s: string, maxDecimals = 4): string {
+  if (!s.includes(".")) return s;
+  const [whole, frac] = s.split(".");
+  const trimmed = frac.replace(/0+$/, "").slice(0, maxDecimals);
+  return trimmed.length === 0 ? whole : `${whole}.${trimmed}`;
 }
 
 function serialiseOrder(order: Order) {
