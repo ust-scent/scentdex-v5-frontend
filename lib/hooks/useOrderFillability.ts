@@ -91,7 +91,14 @@ export function useOrderFillability(orders: OrderInput[]): FillabilityCheck {
     // runtime, but TS infers it strictly so we relax via cast.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     contracts: contracts as any,
-    query: { enabled: contracts.length > 0 },
+    query: {
+      enabled: contracts.length > 0,
+      // Poll every 8s so the maker's "Approval needed" badge clears within
+      // one refresh window after they finish the two-step Permit2 approval,
+      // without round-tripping the server poll for the same data.
+      refetchInterval: 8000,
+      refetchOnWindowFocus: true,
+    },
   });
 
   return useMemo<FillabilityCheck>(() => {
@@ -131,8 +138,15 @@ export function useOrderFillability(orders: OrderInput[]): FillabilityCheck {
       const allowAmount = BigInt(tuple[0]);
       const allowExpiry = Number(tuple[1]);
 
+      // Permit2 reverts with `AllowanceExpired` when block.timestamp > expiration,
+      // so an expiry of 0 is "expired immediately", not "no expiry". An order
+      // is only fillable when expiration is strictly in the future. Pulling the
+      // wall-clock here is fine: `useMemo` rebuilds with the polled `data`, and
+      // the result is purely consumed downstream — no purity invariant relies
+      // on `nowSec` being identical across re-renders.
+      // eslint-disable-next-line react-hooks/purity
       const nowSec = Math.floor(Date.now() / 1000);
-      const allowanceLive = allowExpiry === 0 || allowExpiry > nowSec;
+      const allowanceLive = allowExpiry > nowSec;
 
       if (balance >= need && allowAmount >= need && allowanceLive) {
         status[o.orderHash] = "fillable";

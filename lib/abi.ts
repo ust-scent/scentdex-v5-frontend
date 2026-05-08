@@ -59,11 +59,18 @@ export const ERC20_ABI = [
 ] as const;
 
 /**
- * Uniswap Permit2 — only the read-side fragment we need from the order book to
- * gauge whether a maker still has enough allowance left to fill a posted order.
+ * Uniswap Permit2 — minimal AllowanceTransfer fragment used by the trade UI.
  *
- * `allowance(owner, token, spender)` returns the packed
- * (uint160 amount, uint48 expiration, uint48 nonce) tuple.
+ * V5 settles via `permit2.transferFrom(maker, taker, amount, token)` (see
+ * ScentDexV5.sol:1024), which draws against the maker's per-spender allowance
+ * inside Permit2. So a maker actually needs TWO approvals before any of their
+ * signed orders can be filled:
+ *
+ *   1. `ERC20.approve(Permit2, MaxUint256)` — wallet → Permit2 (one-time per token)
+ *   2. `Permit2.approve(token, ScentDexV5, amount, expiration)` — Permit2 → DEX
+ *
+ * The `allowance(owner, token, spender)` getter returns the packed
+ * (uint160 amount, uint48 expiration, uint48 nonce) tuple for the second hop.
  */
 export const PERMIT2_ABI = [
   {
@@ -80,6 +87,18 @@ export const PERMIT2_ABI = [
       { name: "expiration", type: "uint48" },
       { name: "nonce", type: "uint48" },
     ],
+  },
+  {
+    type: "function",
+    name: "approve",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "token", type: "address" },
+      { name: "spender", type: "address" },
+      { name: "amount", type: "uint160" },
+      { name: "expiration", type: "uint48" },
+    ],
+    outputs: [],
   },
 ] as const;
 

@@ -127,6 +127,12 @@ export type Dictionary = {
   "trade.approvedTokens.minting": string;
   "trade.approvedTokens.getMint": string;
   "trade.approvedTokens.balance": string;
+  "trade.approvedTokens.step1Label": string;
+  "trade.approvedTokens.step2Label": string;
+  "trade.approvedTokens.approvingStep1": string;
+  "trade.approvedTokens.approvingStep2": string;
+  "trade.approvedTokens.continueApproval": string;
+  "trade.approvedTokens.partialDescription": string;
 
   // Trade page — MyOrders
   "trade.myOrders.active": string;
@@ -188,6 +194,7 @@ export type Dictionary = {
   "trade.placeOrder.balances": string;
   "trade.placeOrder.balanceConnect": string;
   "trade.placeOrder.notDeployedHere": string;
+  "trade.placeOrder.wrongNetworkBalance": string;
 
   // Trade page — RecentTrades
   "trade.recentTrades.title": string;
@@ -335,15 +342,15 @@ const en: Dictionary = {
 
   // Trade page — Approved Tokens (Permit2) tab
   "trade.approvedTokens.description":
-    "No action needed before trading — approvals are requested automatically when you place your first order. This tab shows which tokens you have already approved.",
+    "Approving a token is a two-step process: first you approve Permit2 to move the token, then Permit2 grants SCENTDEX the spend allowance it needs to settle your signed orders. Both transactions happen back-to-back when you click Approve.",
   "trade.approvedTokens.learnMore": "Learn more →",
   "trade.approvedTokens.notDeployed": "Not deployed on this network.",
   "trade.approvedTokens.connectWallet":
     "Connect your wallet to view your {symbol} balance and Permit2 status.",
   "trade.approvedTokens.approved":
-    "Permit2 is approved. SCENTDEX can route your signed orders without another approve tx.",
+    "Both legs are approved. SCENTDEX can settle your signed orders without further approvals.",
   "trade.approvedTokens.notApproved":
-    "Approve once to start trading {symbol}. You'll sign a single on-chain transaction granting Permit2 a max allowance.",
+    "Approve to start trading {symbol}. Two transactions: ERC-20 → Permit2, then Permit2 → SCENTDEX.",
   "trade.approvedTokens.approve": "Approve {symbol}",
   "trade.approvedTokens.reApprove": "Re-approve",
   "trade.approvedTokens.approving": "Approving…",
@@ -352,6 +359,13 @@ const en: Dictionary = {
   "trade.approvedTokens.minting": "Minting…",
   "trade.approvedTokens.getMint": "Get 1,000 {symbol}",
   "trade.approvedTokens.balance": "Balance",
+  "trade.approvedTokens.step1Label": "Step 1 · ERC-20 → Permit2",
+  "trade.approvedTokens.step2Label": "Step 2 · Permit2 → SCENTDEX",
+  "trade.approvedTokens.approvingStep1": "Approving (1/2)…",
+  "trade.approvedTokens.approvingStep2": "Approving (2/2)…",
+  "trade.approvedTokens.continueApproval": "Finish approval",
+  "trade.approvedTokens.partialDescription":
+    "Step 1 is done. One more transaction (Permit2 → SCENTDEX) is needed before fills can settle.",
 
   // Trade page — MyOrders
   "trade.myOrders.active": "Active ({count})",
@@ -412,9 +426,10 @@ const en: Dictionary = {
   "trade.placeOrder.couldNotBuild": "Could not build order amounts",
   "trade.placeOrder.buy": "Buy {base}",
   "trade.placeOrder.sell": "Sell {base}",
-  "trade.placeOrder.balances": "Balance",
+  "trade.placeOrder.balances": "Wallet Balance",
   "trade.placeOrder.balanceConnect": "Connect wallet to see your balance",
   "trade.placeOrder.notDeployedHere": "—",
+  "trade.placeOrder.wrongNetworkBalance": "Switch to Sepolia to see your balance",
 
   // Trade page — RecentTrades
   "trade.recentTrades.title": "Recent Trades",
@@ -566,15 +581,15 @@ const ja: Dictionary = {
 
   // Trade page — Approved Tokens (Permit2) tab
   "trade.approvedTokens.description":
-    "取引前に特別な操作は不要です。初回注文時に自動で承認が求められます。このタブは承認済みトークンの確認用です。",
+    "トークン承認は2段階です。まず Permit2 にトークンの移動を許可し、次に Permit2 から SCENTDEX へ移動許可を渡します。「承認」ボタンを押すと両方が連続で実行されます（MetaMask の署名は2回）。",
   "trade.approvedTokens.learnMore": "詳しく →",
   "trade.approvedTokens.notDeployed": "このネットワークにはデプロイされていません。",
   "trade.approvedTokens.connectWallet":
     "ウォレットを接続すると、{symbol} の残高と承認状況を確認できます。",
   "trade.approvedTokens.approved":
-    "承認済みです。SCENTDEX は署名済み注文をオンチェーンの承認なしに実行できます。",
+    "両方の承認が完了しています。SCENTDEX は追加承認なしで署名済み注文を約定できます。",
   "trade.approvedTokens.notApproved":
-    "{symbol} の取引を開始するには、Permit2 を一度承認してください。署名 1 回のオンチェーントランザクションで完了します。",
+    "{symbol} の取引を開始するには承認が必要です。トランザクションは2回（ERC-20 → Permit2、Permit2 → SCENTDEX）。",
   "trade.approvedTokens.approve": "{symbol} を承認する",
   "trade.approvedTokens.reApprove": "再承認",
   "trade.approvedTokens.approving": "承認中…",
@@ -583,6 +598,13 @@ const ja: Dictionary = {
   "trade.approvedTokens.minting": "取得中…",
   "trade.approvedTokens.getMint": "{symbol} を 1,000 取得",
   "trade.approvedTokens.balance": "残高",
+  "trade.approvedTokens.step1Label": "ステップ 1 · ERC-20 → Permit2",
+  "trade.approvedTokens.step2Label": "ステップ 2 · Permit2 → SCENTDEX",
+  "trade.approvedTokens.approvingStep1": "承認中（1/2）…",
+  "trade.approvedTokens.approvingStep2": "承認中（2/2）…",
+  "trade.approvedTokens.continueApproval": "承認を完了する",
+  "trade.approvedTokens.partialDescription":
+    "ステップ 1 は完了しました。約定可能にするには、もう 1 件のトランザクション（Permit2 → SCENTDEX）が必要です。",
 
   // Trade page — MyOrders
   "trade.myOrders.active": "有効 ({count})",
@@ -643,9 +665,10 @@ const ja: Dictionary = {
   "trade.placeOrder.couldNotBuild": "注文金額の計算に失敗しました",
   "trade.placeOrder.buy": "{base} を買う",
   "trade.placeOrder.sell": "{base} を売る",
-  "trade.placeOrder.balances": "残高",
+  "trade.placeOrder.balances": "ウォレット残高",
   "trade.placeOrder.balanceConnect": "残高を表示するにはウォレットを接続してください",
   "trade.placeOrder.notDeployedHere": "—",
+  "trade.placeOrder.wrongNetworkBalance": "残高を表示するには Sepolia に切り替えてください",
 
   // Trade page — RecentTrades
   "trade.recentTrades.title": "最近の取引",

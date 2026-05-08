@@ -610,16 +610,17 @@ function Permit2() {
 function Permit2Card({ token }: { token: Token }) {
   const t = useTranslator();
   const s = useTokenStatus(token);
-  const isApproved = s.allowance > 0n;
   const hasAddress = Boolean(s.tokenAddress);
 
-  const state: "no-address" | "disconnected" | "approved" | "not-approved" =
+  const state: "no-address" | "disconnected" | "approved" | "partial" | "not-approved" =
     !hasAddress
       ? "no-address"
       : !s.isConnected
       ? "disconnected"
-      : isApproved
+      : s.isFullyApproved
       ? "approved"
+      : s.isErc20Approved
+      ? "partial"
       : "not-approved";
 
   return (
@@ -648,11 +649,7 @@ function Permit2Card({ token }: { token: Token }) {
           {t("trade.approvedTokens.connectWallet").replace("{symbol}", token.symbol)}
         </p>
       ) : (
-        <PermitBody
-          token={token}
-          status={s}
-          isApproved={isApproved}
-        />
+        <PermitBody token={token} status={s} />
       )}
     </div>
   );
@@ -661,12 +658,19 @@ function Permit2Card({ token }: { token: Token }) {
 function StateBadge({
   state,
 }: {
-  state: "no-address" | "disconnected" | "approved" | "not-approved";
+  state: "no-address" | "disconnected" | "approved" | "partial" | "not-approved";
 }) {
   if (state === "approved") {
     return (
       <span className="text-[11px] px-2 py-0.5 rounded-full bg-buy/15 text-buy">
         Active
+      </span>
+    );
+  }
+  if (state === "partial") {
+    return (
+      <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400">
+        Step 2/2
       </span>
     );
   }
@@ -687,15 +691,29 @@ function StateBadge({
 function PermitBody({
   token,
   status,
-  isApproved,
 }: {
   token: Token;
   status: ReturnType<typeof useTokenStatus>;
-  isApproved: boolean;
 }) {
   const t = useTranslator();
   const balance = formatUnits(status.balance, token.decimals);
   const balanceShort = trimTrailingZeros(balance, 4);
+
+  const isFullyApproved = status.isFullyApproved;
+  const isPartial = !isFullyApproved && status.isErc20Approved;
+
+  let buttonLabel: string;
+  if (status.approveStep === "step1") {
+    buttonLabel = t("trade.approvedTokens.approvingStep1");
+  } else if (status.approveStep === "step2") {
+    buttonLabel = t("trade.approvedTokens.approvingStep2");
+  } else if (isFullyApproved) {
+    buttonLabel = t("trade.approvedTokens.reApprove");
+  } else if (isPartial) {
+    buttonLabel = t("trade.approvedTokens.continueApproval");
+  } else {
+    buttonLabel = t("trade.approvedTokens.approve").replace("{symbol}", token.symbol);
+  }
 
   return (
     <>
@@ -708,7 +726,18 @@ function PermitBody({
         </span>
       </div>
 
-      {isApproved ? (
+      <div className="mb-3 flex flex-col gap-1 text-[11px]">
+        <StepRow
+          label={t("trade.approvedTokens.step1Label")}
+          done={status.isErc20Approved}
+        />
+        <StepRow
+          label={t("trade.approvedTokens.step2Label")}
+          done={status.isPermit2DexApproved}
+        />
+      </div>
+
+      {isFullyApproved ? (
         <>
           <div className="mb-2 text-[12px] text-fg-dim leading-relaxed">
             {t("trade.approvedTokens.approved")}
@@ -719,25 +748,23 @@ function PermitBody({
               disabled={status.isApproving}
               className="px-3 py-1 rounded text-[12px] text-fg-dim border border-line hover:text-fg hover:border-line-strong disabled:opacity-50"
             >
-              {status.isApproving
-                ? t("trade.approvedTokens.reApproving")
-                : t("trade.approvedTokens.reApprove")}
+              {status.isApproving ? t("trade.approvedTokens.reApproving") : buttonLabel}
             </button>
           </div>
         </>
       ) : (
         <>
           <p className="text-[12px] text-fg-dim mb-3 leading-relaxed">
-            {t("trade.approvedTokens.notApproved").replace("{symbol}", token.symbol)}
+            {isPartial
+              ? t("trade.approvedTokens.partialDescription")
+              : t("trade.approvedTokens.notApproved").replace("{symbol}", token.symbol)}
           </p>
           <button
             onClick={status.approve}
             disabled={status.isApproving}
             className="w-full py-2 rounded-md bg-accent text-bg font-medium text-[13px] disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            {status.isApproving
-              ? t("trade.approvedTokens.approving")
-              : t("trade.approvedTokens.approve").replace("{symbol}", token.symbol)}
+            {buttonLabel}
           </button>
         </>
       )}
@@ -748,6 +775,22 @@ function PermitBody({
         </p>
       ) : null}
     </>
+  );
+}
+
+function StepRow({ label, done }: { label: string; done: boolean }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span
+        className={`inline-flex items-center justify-center w-3.5 h-3.5 rounded-full text-[9px] ${
+          done ? "bg-buy/20 text-buy" : "bg-white/[0.06] text-fg-faint"
+        }`}
+        aria-hidden="true"
+      >
+        {done ? "✓" : "•"}
+      </span>
+      <span className={done ? "text-fg-dim" : "text-fg-faint"}>{label}</span>
+    </div>
   );
 }
 

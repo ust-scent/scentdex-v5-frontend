@@ -379,27 +379,47 @@ function BalanceStrip({
 }) {
   const t = useTranslator();
   const { isConnected } = useAccount();
+  const chainId = useChainId();
+  const dexAddress = SCENTDEX_V5_ADDRESS[chainId];
+  const onSupportedChain = Boolean(dexAddress);
+
+  // Pair tokens come first so they're always front-and-centre, then the rest
+  // of the supported set so the maker can see their full wallet at a glance
+  // without bouncing to the Approved Tokens tab or MetaMask.
+  const pairSet = new Set([baseToken.symbol, quoteToken.symbol]);
+  const otherTokens = TOKENS.filter((tok) => !pairSet.has(tok.symbol));
+  const tokensToShow = [baseToken, quoteToken, ...otherTokens];
 
   return (
-    <div className="px-3 py-2 rounded-md border border-line bg-white/[0.015]">
-      <div className="text-[10px] uppercase tracking-[0.14em] text-fg-faint mb-1.5">
-        {t("trade.placeOrder.balances")}
+    <div className="px-3 py-2.5 rounded-md border border-line-strong bg-white/[0.04]">
+      <div className="text-[10px] uppercase tracking-[0.14em] text-fg-dim mb-1.5 flex items-center justify-between">
+        <span>{t("trade.placeOrder.balances")}</span>
+        {isConnected && !onSupportedChain ? (
+          <span className="text-amber-400 normal-case tracking-normal text-[11px] font-medium">
+            {t("trade.placeOrder.wrongNetworkBalance")}
+          </span>
+        ) : null}
       </div>
       {!isConnected ? (
-        <div className="text-[12px] text-fg-faint">
+        <div className="text-[12px] text-fg-dim">
           {t("trade.placeOrder.balanceConnect")}
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3">
-          <BalanceCell token={baseToken} />
-          <BalanceCell token={quoteToken} />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1.5">
+          {tokensToShow.map((tok, i) => (
+            <BalanceCell
+              key={tok.symbol}
+              token={tok}
+              emphasis={i < 2}
+            />
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-function BalanceCell({ token }: { token: Token }) {
+function BalanceCell({ token, emphasis }: { token: Token; emphasis?: boolean }) {
   const t = useTranslator();
   const status = useTokenStatus(token);
   const hasAddress = Boolean(status.tokenAddress);
@@ -410,8 +430,14 @@ function BalanceCell({ token }: { token: Token }) {
     : trimZeros(formatUnits(status.balance, token.decimals), 4);
   return (
     <div className="flex items-baseline justify-between gap-2 text-[12px]">
-      <span className="text-fg-faint">{token.symbol}</span>
-      <span className="font-mono tnum text-fg">{display}</span>
+      <span className={emphasis ? "text-fg-dim" : "text-fg-faint"}>
+        {token.symbol}
+      </span>
+      <span
+        className={`font-mono tnum ${emphasis ? "text-fg" : "text-fg-dim"}`}
+      >
+        {display}
+      </span>
     </div>
   );
 }
