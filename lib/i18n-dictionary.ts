@@ -188,6 +188,17 @@ export type Dictionary = {
   "trade.placeOrder.total": string;
   "trade.placeOrder.youReceive": string;
   "trade.placeOrder.makerFee": string;
+  // Round-5 conversational labels
+  "trade.placeOrder.sizeSellQuestion": string;
+  "trade.placeOrder.sizeBuyQuestion": string;
+  "trade.placeOrder.priceQuestion": string;
+  "trade.placeOrder.marketPriceHint": string;
+  "trade.placeOrder.grossSell": string;
+  "trade.placeOrder.grossBuy": string;
+  "trade.placeOrder.expiryOption.1d": string;
+  "trade.placeOrder.expiryOption.1w": string;
+  "trade.placeOrder.expiryOption.1mo": string;
+  "trade.placeOrder.expiryOption.1y": string;
   "trade.placeOrder.connectWallet": string;
   "trade.placeOrder.wrongNetwork": string;
   "trade.placeOrder.pairNotAvailable": string;
@@ -473,7 +484,17 @@ const en: Dictionary = {
   "trade.placeOrder.title": "Place Order",
   "trade.placeOrder.price": "Price",
   "trade.placeOrder.amount": "Amount",
-  "trade.placeOrder.expires": "Expires",
+  "trade.placeOrder.expires": "Expires after",
+  "trade.placeOrder.sizeSellQuestion": "How much {base} do you want to sell?",
+  "trade.placeOrder.sizeBuyQuestion": "How much {quote} do you want to spend?",
+  "trade.placeOrder.priceQuestion": "At what price per 1 {base}?",
+  "trade.placeOrder.marketPriceHint": "Most recent fill: {price}",
+  "trade.placeOrder.grossSell": "You receive (gross, {symbol})",
+  "trade.placeOrder.grossBuy": "You receive (gross, {symbol})",
+  "trade.placeOrder.expiryOption.1d": "1 day",
+  "trade.placeOrder.expiryOption.1w": "1 week",
+  "trade.placeOrder.expiryOption.1mo": "1 month",
+  "trade.placeOrder.expiryOption.1y": "1 year",
   "trade.placeOrder.total": "Total",
   "trade.placeOrder.youReceive": "You receive (at least)",
   "trade.placeOrder.makerFee": "Protocol fee ({bps}%) (maker)",
@@ -776,6 +797,16 @@ const ja: Dictionary = {
   "trade.placeOrder.price": "価格",
   "trade.placeOrder.amount": "数量",
   "trade.placeOrder.expires": "有効期限",
+  "trade.placeOrder.sizeSellQuestion": "{base} をどれくらい売りたい？",
+  "trade.placeOrder.sizeBuyQuestion": "{quote} をいくら使いたい？",
+  "trade.placeOrder.priceQuestion": "1 {base} をいくらで？",
+  "trade.placeOrder.marketPriceHint": "直近の約定価格: {price}",
+  "trade.placeOrder.grossSell": "受取（手数料引き前、{symbol}）",
+  "trade.placeOrder.grossBuy": "受取（手数料引き前、{symbol}）",
+  "trade.placeOrder.expiryOption.1d": "1日",
+  "trade.placeOrder.expiryOption.1w": "1週間",
+  "trade.placeOrder.expiryOption.1mo": "1ヶ月",
+  "trade.placeOrder.expiryOption.1y": "1年",
   "trade.placeOrder.total": "合計",
   "trade.placeOrder.youReceive": "受取額（最低）",
   "trade.placeOrder.makerFee": "プロトコル手数料 ({bps}%)（メイカー）",

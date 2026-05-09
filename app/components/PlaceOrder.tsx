@@ -22,20 +22,30 @@ import {
   serialisePermitSingle,
   type PermitSingle,
 } from "@/lib/permit2";
+import { useFillEvents } from "@/lib/hooks/useFillEvents";
 import { TOKENS, feeConfig, type Pair, type Token } from "@/lib/tokens";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { type Hex } from "viem";
+import { formatUnits, type Hex } from "viem";
 import { useAccount, useChainId, useSignTypedData } from "wagmi";
 
 type Side = "buy" | "sell";
-type Expiry = "1h" | "1d" | "1w" | "custom";
+type ExpiryChoice = "1d" | "1w" | "1mo" | "1y";
+
+const DEFAULT_EXPIRY: ExpiryChoice = "1mo";
 
 export function PlaceOrder({ pair }: { pair: Pair }) {
   const t = useTranslator();
   const [side, setSide] = useState<Side>("sell");
-  const [price, setPrice] = useState("");
-  const [amount, setAmount] = useState("");
-  const [expiry, setExpiry] = useState<Expiry>("1d");
+  /** Unit price the maker wants, expressed as quote per 1 base. */
+  const [unitPrice, setUnitPrice] = useState("");
+  /**
+   * Maker-side size: how much the maker is giving up.
+   *  - SELL: base amount to sell
+   *  - BUY:  quote budget to spend
+   */
+  const [size, setSize] = useState("");
+  const [expiry, setExpiry] = useState<ExpiryChoice>(DEFAULT_EXPIRY);
+  const [showExpiryDetail, setShowExpiryDetail] = useState(false);
 
   const { address: account, isConnected } = useAccount();
   const chainId = useChainId();
@@ -48,6 +58,11 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
   // Permit2 needs to be approved for THAT token before any taker can fill.
   const makerToken = side === "sell" ? baseToken : quoteToken;
   const makerStatus = useTokenStatus(makerToken);
+
+  // Live price hint from on-chain OrderFilled events (round-2). Used as
+  // the placeholder in the unit price input so the user has a sane anchor
+  // when they don't know what number to type.
+  const stats = useFillEvents(pair);
 
   const { signTypedDataAsync, isPending: signing } = useSignTypedData();
 
@@ -67,20 +82,56 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
   // -- Form-derived totals ---------------------------------------------
   const cfg = feeConfig(pair);
   const totals = useMemo(() => {
-    const priceN = Number(price);
-    const amountN = Number(amount);
-    if (Number.isNaN(priceN) || Number.isNaN(amountN) || priceN <= 0 || amountN <= 0) {
-      return { total: 0, fee: 0, receive: 0 };
+    const sizeN = Number(size);
+    const priceN = Number(unitPrice);
+    if (
+      !Number.isFinite(sizeN) ||
+      !Number.isFinite(priceN) ||
+      sizeN <= 0 ||
+      priceN <= 0
+    ) {
+      return {
+        gross: 0,
+        fee: 0,
+        net: 0,
+        derivedReceive: 0,
+        derivedReceiveSymbol:
+          side === "sell" ? quoteToken.symbol : baseToken.symbol,
+      };
     }
-    const total = priceN * amountN;
-    // Fee only applies on the Case-A side (when the maker is selling feeSide token).
-    // For a sell of base: maker pays fee iff feeSide == base.
-    // For a buy of base: maker pays fee iff feeSide == quote.
-    const isFeeOnThisOrder =
+
+    // Sell: the maker gives `size` of base, expects size * price of quote.
+    // Buy:  the maker gives `size` of quote (budget), expects size / price of base.
+    let derivedReceive: number;
+    let derivedReceiveSymbol: string;
+    let grossInQuote: number;
+    if (side === "sell") {
+      derivedReceive = sizeN * priceN;
+      derivedReceiveSymbol = quoteToken.symbol;
+      grossInQuote = derivedReceive;
+    } else {
+      derivedReceive = sizeN / priceN;
+      derivedReceiveSymbol = baseToken.symbol;
+      grossInQuote = sizeN; // budget IS the gross quote amount
+    }
+
+    // Fee is paid in the takerToken (Case A from V5 contract). Only applies
+    // when the maker's makerToken matches the pair's feeSide token.
+    // Sell: makerToken = base; fee applies iff feeSide == base. Fee comes off the maker's quote receive.
+    // Buy:  makerToken = quote; fee applies iff feeSide == quote. Fee comes off the maker's base receive.
+    const feeApplies =
       side === "sell" ? cfg.feeSide === pair.base : cfg.feeSide === pair.quote;
-    const fee = isFeeOnThisOrder ? (total * cfg.feeBps) / 10_000 : 0;
-    return { total, fee, receive: total - fee };
-  }, [price, amount, side, cfg.feeBps, cfg.feeSide, pair.base, pair.quote]);
+    const fee = feeApplies ? (derivedReceive * cfg.feeBps) / 10_000 : 0;
+    const net = derivedReceive - fee;
+
+    return {
+      gross: grossInQuote,
+      fee,
+      net,
+      derivedReceive,
+      derivedReceiveSymbol,
+    };
+  }, [size, unitPrice, side, cfg.feeBps, cfg.feeSide, pair.base, pair.quote, baseToken.symbol, quoteToken.symbol]);
 
   // -- Reasons we can't sign yet ---------------------------------------
   const reasons: string[] = [];
@@ -91,8 +142,10 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
     (!baseToken.addresses[chainId] || !quoteToken.addresses[chainId])
   )
     reasons.push(t("trade.placeOrder.pairNotAvailable"));
-  if (!price || Number(price) <= 0) reasons.push(t("trade.placeOrder.enterPrice"));
-  if (!amount || Number(amount) <= 0) reasons.push(t("trade.placeOrder.enterAmount"));
+  if (!unitPrice || Number(unitPrice) <= 0)
+    reasons.push(t("trade.placeOrder.enterPrice"));
+  if (!size || Number(size) <= 0)
+    reasons.push(t("trade.placeOrder.enterAmount"));
   const canSign = reasons.length === 0;
 
   function proceedToModal() {
@@ -102,8 +155,8 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
       side,
       base: baseToken,
       quote: quoteToken,
-      amount,
-      price,
+      size,
+      unitPrice,
     });
     if (!amounts) {
       setLastResult({ ok: false, error: t("trade.placeOrder.couldNotBuild") });
@@ -258,8 +311,8 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
 
       setLastResult({ ok: true, signature });
       setModalOpen(false);
-      setAmount("");
-      setPrice("");
+      setSize("");
+      setUnitPrice("");
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setLastResult({ ok: false, error: msg.slice(0, 160) });
@@ -322,71 +375,70 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
           </button>
         </div>
 
-        <Field label={t("trade.placeOrder.price")} suffix={pair.quote}>
-          <input
-            inputMode="decimal"
-            placeholder="0.00"
-            value={price}
-            onChange={(e) => setPrice(e.target.value)}
-            className="w-full bg-transparent outline-none text-[16px] font-mono tnum placeholder:text-fg-faint"
-          />
-        </Field>
+        {/*
+         * Order of inputs follows how a person actually thinks:
+         *   SELL → "How much do I want to sell?"  →  "At what price?"
+         *   BUY  → "How much do I want to spend?" →  "At what price?"
+         * Size is always denominated on the maker side (the side the user
+         * gives up), so the % buttons against the maker-side balance are
+         * a natural fit and require no decimal arithmetic from the user.
+         */}
+        <SizeField
+          side={side}
+          baseSymbol={pair.base}
+          quoteSymbol={pair.quote}
+          value={size}
+          onChange={setSize}
+        />
 
-        <Field label={t("trade.placeOrder.amount")} suffix={pair.base}>
-          <input
-            inputMode="decimal"
-            placeholder="0.00"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            className="w-full bg-transparent outline-none text-[16px] font-mono tnum placeholder:text-fg-faint"
-          />
-        </Field>
+        <PercentButtons
+          balance={makerStatus.balance}
+          decimals={makerToken.decimals}
+          onPick={(v) => setSize(v)}
+        />
 
-        <div className="grid grid-cols-4 gap-2">
-          {[25, 50, 75, 100].map((p) => (
-            <button
-              key={p}
-              className="py-1.5 rounded-md border border-line bg-white/[0.02] text-[12px] text-fg-dim hover:text-fg hover:border-line-strong transition-colors"
-            >
-              {p} %
-            </button>
-          ))}
-        </div>
+        <PriceField
+          baseSymbol={pair.base}
+          quoteSymbol={pair.quote}
+          value={unitPrice}
+          onChange={setUnitPrice}
+          marketPriceHint={stats.latestPrice}
+        />
 
-        <div>
-          <div className="text-[10px] uppercase tracking-[0.14em] text-fg-faint mb-2">
-            {t("trade.placeOrder.expires")}
-          </div>
-          <div className="grid grid-cols-4 gap-2">
-            {(["1h", "1d", "1w", "custom"] as const).map((opt) => (
-              <button
-                key={opt}
-                onClick={() => setExpiry(opt)}
-                className={`py-1.5 rounded-md border text-[12px] transition-colors ${
-                  expiry === opt
-                    ? "border-accent text-fg bg-accent-soft"
-                    : "border-line bg-white/[0.02] text-fg-dim hover:text-fg hover:border-line-strong"
-                }`}
-              >
-                {opt}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Summary */}
+        {/*
+         * Receipt preview: derived from size + unit price. Sells produce
+         * quote; buys produce base. We also surface the gross + protocol
+         * fee so the user knows exactly what's coming off.
+         */}
         <div className="mt-2 px-3 py-3 rounded-md bg-white/[0.015] border border-line space-y-2 text-[13px]">
-          <Row k={t("trade.placeOrder.total")} v={`${fmtNum(totals.total)} ${pair.quote}`} />
           <Row
-            k={t("trade.placeOrder.makerFee").replace("{bps}", (cfg.feeBps / 100).toFixed(0))}
-            v={`${fmtNum(totals.fee)} ${pair.quote}`}
+            k={
+              side === "sell"
+                ? t("trade.placeOrder.grossSell").replace("{symbol}", pair.quote)
+                : t("trade.placeOrder.grossBuy").replace("{symbol}", pair.base)
+            }
+            v={`${fmtNum(totals.derivedReceive)} ${totals.derivedReceiveSymbol}`}
+          />
+          <Row
+            k={t("trade.placeOrder.makerFee").replace(
+              "{bps}",
+              (cfg.feeBps / 100).toFixed(0),
+            )}
+            v={`${fmtNum(totals.fee)} ${totals.derivedReceiveSymbol}`}
           />
           <Row
             k={t("trade.placeOrder.youReceive")}
-            v={`${fmtNum(totals.receive)} ${pair.quote}`}
+            v={`${fmtNum(totals.net)} ${totals.derivedReceiveSymbol}`}
             dim
           />
         </div>
+
+        <ExpiryRow
+          choice={expiry}
+          onChange={setExpiry}
+          expanded={showExpiryDetail}
+          onToggle={() => setShowExpiryDetail((v) => !v)}
+        />
 
         {lastResult ? (
           lastResult.ok ? (
@@ -445,23 +497,209 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
 function Field({
   label,
   suffix,
+  hint,
   children,
 }: {
-  label: string;
+  label: React.ReactNode;
   suffix: string;
+  hint?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <div>
-      <div className="flex items-center justify-between mb-1.5">
-        <span className="text-[10px] uppercase tracking-[0.14em] text-fg-faint">
-          {label}
-        </span>
+      <div className="flex items-end justify-between mb-1.5 gap-2">
+        <span className="text-[12px] text-fg-dim">{label}</span>
         <span className="text-[11px] text-fg-faint font-mono">{suffix}</span>
       </div>
       <div className="px-3 py-2.5 bg-white/[0.02] border border-line rounded-md focus-within:border-line-strong">
         {children}
       </div>
+      {hint ? (
+        <div className="mt-1 text-[11px] text-fg-faint">{hint}</div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Size input — denominated on the maker side. Sell asks the user how
+ * much of the base they want to sell; Buy asks how much of the quote
+ * they want to spend (their budget). The label is a question, not a
+ * data-shaped noun, because that's how the user is actually thinking.
+ */
+function SizeField({
+  side,
+  baseSymbol,
+  quoteSymbol,
+  value,
+  onChange,
+}: {
+  side: "buy" | "sell";
+  baseSymbol: string;
+  quoteSymbol: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const t = useTranslator();
+  const label =
+    side === "sell"
+      ? t("trade.placeOrder.sizeSellQuestion").replace("{base}", baseSymbol)
+      : t("trade.placeOrder.sizeBuyQuestion").replace("{quote}", quoteSymbol);
+  const suffix = side === "sell" ? baseSymbol : quoteSymbol;
+  return (
+    <Field label={label} suffix={suffix}>
+      <input
+        inputMode="decimal"
+        placeholder="0.00"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full bg-transparent outline-none text-[16px] font-mono tnum placeholder:text-fg-faint"
+      />
+    </Field>
+  );
+}
+
+/** Unit price input. Always quote per 1 base, no matter which side. */
+function PriceField({
+  baseSymbol,
+  quoteSymbol,
+  value,
+  onChange,
+  marketPriceHint,
+}: {
+  baseSymbol: string;
+  quoteSymbol: string;
+  value: string;
+  onChange: (v: string) => void;
+  marketPriceHint?: number;
+}) {
+  const t = useTranslator();
+  const label = t("trade.placeOrder.priceQuestion").replace(
+    "{base}",
+    baseSymbol,
+  );
+  const suffix = `${quoteSymbol} / ${baseSymbol}`;
+  const hint =
+    marketPriceHint !== undefined && marketPriceHint > 0 ? (
+      <span>
+        {t("trade.placeOrder.marketPriceHint").replace(
+          "{price}",
+          marketPriceHint.toLocaleString("en-US", {
+            maximumFractionDigits: marketPriceHint >= 1 ? 4 : 8,
+          }),
+        )}
+      </span>
+    ) : undefined;
+  const placeholder =
+    marketPriceHint !== undefined && marketPriceHint > 0
+      ? marketPriceHint.toLocaleString("en-US", {
+          maximumFractionDigits: marketPriceHint >= 1 ? 4 : 8,
+        })
+      : "0.00";
+  return (
+    <Field label={label} suffix={suffix} hint={hint}>
+      <input
+        inputMode="decimal"
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full bg-transparent outline-none text-[16px] font-mono tnum placeholder:text-fg-faint"
+      />
+    </Field>
+  );
+}
+
+/**
+ * 25/50/75/100 % buttons against the maker-side balance. "100%" sets the
+ * size input to the entire balance; "50%" to half; etc. Wires through
+ * `onPick` rather than mutating size directly so we keep the input the
+ * single source of truth.
+ */
+function PercentButtons({
+  balance,
+  decimals,
+  onPick,
+}: {
+  balance: bigint;
+  decimals: number;
+  onPick: (decimalString: string) => void;
+}) {
+  const pick = (pct: number) => {
+    if (balance === 0n) {
+      onPick("0");
+      return;
+    }
+    // bigint-safe percentage: scale by 10000 to keep one decimal of pct
+    // resolution (25/50/75/100 are integers so this is exact).
+    const scaled = (balance * BigInt(pct)) / 100n;
+    onPick(formatUnits(scaled, decimals));
+  };
+  return (
+    <div className="grid grid-cols-4 gap-2">
+      {[25, 50, 75, 100].map((pct) => (
+        <button
+          key={pct}
+          onClick={() => pick(pct)}
+          className="py-1.5 rounded-md border border-line bg-white/[0.02] text-[12px] text-fg-dim hover:text-fg hover:border-line-strong transition-colors"
+        >
+          {pct} %
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Order expiry selector. Default is 1 month — V5 requires a non-zero
+ * expiry, but past 30 days the price drift risk vs market grows enough
+ * that the maker probably wants to re-sign anyway. The four-button row
+ * is hidden behind a disclosure so the form stays clean for the common
+ * case where the user doesn't care.
+ */
+function ExpiryRow({
+  choice,
+  onChange,
+  expanded,
+  onToggle,
+}: {
+  choice: "1d" | "1w" | "1mo" | "1y";
+  onChange: (c: "1d" | "1w" | "1mo" | "1y") => void;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const t = useTranslator();
+  const labelFor = (c: typeof choice) =>
+    t(`trade.placeOrder.expiryOption.${c}` as never) as string;
+  return (
+    <div className="border-t border-line pt-3">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full flex items-center justify-between text-[12px] text-fg-faint hover:text-fg-dim"
+      >
+        <span>
+          {t("trade.placeOrder.expires")}{" "}
+          <span className="text-fg-dim">{labelFor(choice)}</span>
+        </span>
+        <span aria-hidden="true">{expanded ? "▾" : "▸"}</span>
+      </button>
+      {expanded ? (
+        <div className="mt-2 grid grid-cols-4 gap-2">
+          {(["1d", "1w", "1mo", "1y"] as const).map((opt) => (
+            <button
+              key={opt}
+              onClick={() => onChange(opt)}
+              className={`py-1.5 rounded-md border text-[12px] transition-colors ${
+                choice === opt
+                  ? "border-accent text-fg bg-accent-soft"
+                  : "border-line bg-white/[0.02] text-fg-dim hover:text-fg hover:border-line-strong"
+              }`}
+            >
+              {labelFor(opt)}
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

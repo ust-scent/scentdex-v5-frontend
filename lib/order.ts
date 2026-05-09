@@ -123,66 +123,104 @@ export function randomSalt(): Hex {
 }
 
 /**
- * Convert a 1h / 1d / 1w / custom-seconds expiry choice into a Unix-second
- * timestamp.
+ * Convert an expiry choice into a Unix-second timestamp.
+ *
+ * V5 requires `expiry > 0 && expiry > block.timestamp` so the contract
+ * doesn't accept a literal "no expiry" — the round-5 UI defaults to one
+ * month, which is long enough that a typical maker never thinks about it,
+ * and short enough that drift between signed price and market price stays
+ * bounded. Power users can still pick 1d / 1w / 1mo / 1y from the
+ * disclosure.
  */
-export function expiryFromChoice(choice: "1h" | "1d" | "1w" | "custom", customSeconds?: number): bigint {
+export function expiryFromChoice(
+  choice: "1d" | "1w" | "1mo" | "1y",
+): bigint {
   const now = Math.floor(Date.now() / 1000);
-  const map = { "1h": 3600, "1d": 86400, "1w": 7 * 86400, custom: customSeconds ?? 0 };
-  const dur = map[choice];
-  return BigInt(now + dur);
+  const map: Record<typeof choice, number> = {
+    "1d": 86_400,
+    "1w": 7 * 86_400,
+    "1mo": 30 * 86_400,
+    "1y": 365 * 86_400,
+  };
+  return BigInt(now + map[choice]);
 }
 
 /**
- * Side helper: convert (Buy/Sell {base}, base, quote, price, amount) into
- * the canonical (makerToken, takerToken, makerAmount, takerAmount).
+ * Side helper: maps the user's "size + unit price" intent onto the
+ * canonical (makerToken, takerToken, makerAmount, takerAmount) the
+ * contract expects.
  *
- * For testSCENT/testJPYC pair, "Sell testSCENT" means maker sells testSCENT for testJPYC →
- * makerToken=testSCENT, takerToken=testJPYC, makerAmount=amount, takerAmount=amount*price.
- * "Buy testSCENT" means maker offers testJPYC, wants testSCENT →
- * makerToken=testJPYC, takerToken=testSCENT, makerAmount=amount*price, takerAmount=amount.
+ * `size` is denominated on the *maker side* — the side the user gives up:
+ *
+ *   - SELL testSCENT: size is in testSCENT (how many to sell)
+ *                     makerToken=testSCENT,  takerToken=testJPYC
+ *                     makerAmount=size,      takerAmount=size * unitPrice
+ *   - BUY  testSCENT: size is in testJPYC (budget to spend)
+ *                     makerToken=testJPYC,   takerToken=testSCENT
+ *                     makerAmount=size,      takerAmount=size / unitPrice
+ *
+ * `unitPrice` is always quote per 1 base, no matter which side. Matches
+ * how a human thinks about an order: "I have N to spend / sell, and the
+ * unit price I want is X."
  */
 export function buildAmounts({
   side,
   base,
   quote,
-  amount,
-  price,
+  size,
+  unitPrice,
 }: {
   side: "buy" | "sell";
   base: Token;
   quote: Token;
-  /** Amount denominated in base, as a human-readable decimal string. */
-  amount: string;
-  /** Price = quote per 1 base, as a human-readable decimal string. */
-  price: string;
+  /** Maker-side size, decimal string. Base on sell, quote on buy. */
+  size: string;
+  /** Unit price = quote per 1 base, decimal string. */
+  unitPrice: string;
 }): {
   makerToken: Address;
   takerToken: Address;
   makerAmount: bigint;
   takerAmount: bigint;
 } | null {
-  const baseAddr = base.addresses[0]; // chain-agnostic check
-  if (!baseAddr && !base.addresses[11155111] && !base.addresses[1]) {
+  if (!base.addresses[11155111] && !base.addresses[1]) return null;
+  if (!quote.addresses[11155111] && !quote.addresses[1]) return null;
+
+  const sizeN = Number(size);
+  const priceN = Number(unitPrice);
+  if (
+    !Number.isFinite(sizeN) ||
+    !Number.isFinite(priceN) ||
+    sizeN <= 0 ||
+    priceN <= 0
+  ) {
     return null;
   }
-  const baseAmount = safeParse(amount, base.decimals);
-  const quoteAmount = safeParse(multiplyDecimal(amount, price), quote.decimals);
-  if (baseAmount === null || quoteAmount === null) return null;
 
   if (side === "sell") {
+    // Sell base → user gives base, receives quote.
+    const makerAmount = safeParse(size, base.decimals);
+    const quoteFloat = sizeN * priceN;
+    const takerAmount = safeParse(quoteFloat.toFixed(18), quote.decimals);
+    if (makerAmount === null || takerAmount === null) return null;
     return {
       makerToken: chainAddr(base),
       takerToken: chainAddr(quote),
-      makerAmount: baseAmount,
-      takerAmount: quoteAmount,
+      makerAmount,
+      takerAmount,
     };
   }
+
+  // Buy base → user gives quote (budget), receives base.
+  const makerAmount = safeParse(size, quote.decimals);
+  const baseFloat = sizeN / priceN;
+  const takerAmount = safeParse(baseFloat.toFixed(18), base.decimals);
+  if (makerAmount === null || takerAmount === null) return null;
   return {
     makerToken: chainAddr(quote),
     takerToken: chainAddr(base),
-    makerAmount: quoteAmount,
-    takerAmount: baseAmount,
+    makerAmount,
+    takerAmount,
   };
 }
 
@@ -193,15 +231,6 @@ function safeParse(value: string, decimals: number): bigint | null {
   } catch {
     return null;
   }
-}
-
-function multiplyDecimal(a: string, b: string): string {
-  // Naive decimal multiplication via parseUnits/format; OK for typical UI inputs.
-  // For amounts > ~10^15 SF this loses precision; fine for an order form.
-  const aN = Number(a);
-  const bN = Number(b);
-  if (Number.isNaN(aN) || Number.isNaN(bN)) return "0";
-  return (aN * bN).toFixed(18);
 }
 
 function chainAddr(token: Token): Address {
