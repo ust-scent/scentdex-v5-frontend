@@ -191,7 +191,8 @@ export type Dictionary = {
   // Round-5 conversational labels
   "trade.placeOrder.sizeSellQuestion": string;
   "trade.placeOrder.sizeBuyQuestion": string;
-  "trade.placeOrder.priceQuestion": string;
+  "trade.placeOrder.priceQuestionSell": string;
+  "trade.placeOrder.priceQuestionBuy": string;
   "trade.placeOrder.marketPriceHint": string;
   "trade.placeOrder.grossSell": string;
   "trade.placeOrder.grossBuy": string;
@@ -487,7 +488,10 @@ const en: Dictionary = {
   "trade.placeOrder.expires": "Expires after",
   "trade.placeOrder.sizeSellQuestion": "How much {base} do you want to sell?",
   "trade.placeOrder.sizeBuyQuestion": "How much {quote} do you want to spend?",
-  "trade.placeOrder.priceQuestion": "At what price per 1 {base}?",
+  "trade.placeOrder.priceQuestionSell":
+    "At what price per 1 {base} do you want to sell?",
+  "trade.placeOrder.priceQuestionBuy":
+    "At what price per 1 {base} do you want to buy?",
   "trade.placeOrder.marketPriceHint": "Most recent fill: {price}",
   "trade.placeOrder.grossSell": "You receive (gross, {symbol})",
   "trade.placeOrder.grossBuy": "You receive (gross, {symbol})",
@@ -798,8 +802,9 @@ const ja: Dictionary = {
   "trade.placeOrder.amount": "数量",
   "trade.placeOrder.expires": "有効期限",
   "trade.placeOrder.sizeSellQuestion": "{base} をどれくらい売りたい？",
-  "trade.placeOrder.sizeBuyQuestion": "{quote} をいくら使いたい？",
-  "trade.placeOrder.priceQuestion": "1 {base} をいくらで？",
+  "trade.placeOrder.sizeBuyQuestion": "{quote} をどれくらい使いたい？",
+  "trade.placeOrder.priceQuestionSell": "1 {base} をいくらで売りたい？",
+  "trade.placeOrder.priceQuestionBuy": "1 {base} をいくらで買いたい？",
   "trade.placeOrder.marketPriceHint": "直近の約定価格: {price}",
   "trade.placeOrder.grossSell": "受取（手数料引き前、{symbol}）",
   "trade.placeOrder.grossBuy": "受取（手数料引き前、{symbol}）",

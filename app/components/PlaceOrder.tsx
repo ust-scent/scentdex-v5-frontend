@@ -398,6 +398,7 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
         />
 
         <PriceField
+          side={side}
           baseSymbol={pair.base}
           quoteSymbol={pair.quote}
           value={unitPrice}
@@ -559,14 +560,21 @@ function SizeField({
   );
 }
 
-/** Unit price input. Always quote per 1 base, no matter which side. */
+/**
+ * Unit price input. Always quote per 1 base mathematically; the prompt
+ * verb flips with side so the question reads as a complete Japanese
+ * sentence ("…で売りたい？" vs "…で買いたい？") instead of just trailing
+ * off after the price unit.
+ */
 function PriceField({
+  side,
   baseSymbol,
   quoteSymbol,
   value,
   onChange,
   marketPriceHint,
 }: {
+  side: "buy" | "sell";
   baseSymbol: string;
   quoteSymbol: string;
   value: string;
@@ -574,10 +582,11 @@ function PriceField({
   marketPriceHint?: number;
 }) {
   const t = useTranslator();
-  const label = t("trade.placeOrder.priceQuestion").replace(
-    "{base}",
-    baseSymbol,
-  );
+  const labelKey =
+    side === "sell"
+      ? "trade.placeOrder.priceQuestionSell"
+      : "trade.placeOrder.priceQuestionBuy";
+  const label = t(labelKey).replace("{base}", baseSymbol);
   const suffix = `${quoteSymbol} / ${baseSymbol}`;
   const hint =
     marketPriceHint !== undefined && marketPriceHint > 0 ? (
