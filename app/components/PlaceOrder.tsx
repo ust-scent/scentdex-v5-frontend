@@ -171,18 +171,29 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
 
   async function confirmSign() {
     if (!pendingOrder || !dexAddress) return;
-    try {
-      // Wallet popup #1: the Order itself.
-      const signature = await signTypedDataAsync({
-        domain: buildDomain(chainId, dexAddress),
-        types: ORDER_TYPES,
-        primaryType: "Order",
-        message: pendingOrder as unknown as Record<string, unknown>,
-      } as Parameters<typeof signTypedDataAsync>[0]);
 
-      // Wallet popup #2: the per-order Permit2 PermitSingle. amount/expiry
-      // are bound 1:1 to the order, so this signature only authorises what
-      // the order itself can spend — no idle blanket allowance is created.
+    // Why two signatures and not one:
+    //
+    // V5's `_fillOrder` independently ECDSA-recovers two signatures —
+    // one over the Order EIP-712 hash, one over the Permit2 PermitSingle
+    // hash. Different domain separators, different struct hashes, two
+    // distinct messages by construction. There is no standard EIP-712
+    // multi-sign primitive (eth_signTypedData_v4 takes a single typed
+    // data per call), and EIP-5792 `wallet_sendCalls` only batches
+    // on-chain transactions, not signatures. MetaMask in particular
+    // does not implement batch signing.
+    //
+    // To collapse to one wallet popup we'd need to either (a) redesign
+    // the contract so a single signature covers both hashes (V6 +
+    // re-audit), or (b) drop Permit2 in favour of a custom transfer
+    // path (significant audit surface regression). Round-3 keeps the
+    // two-popup UX since it matches the Uniswap / CoW Swap industry
+    // pattern and preserves the per-order security gain.
+
+    try {
+      // Pre-build the Permit2 PermitSingle so we can fire its sign
+      // request the moment the Order signature returns — no hash work
+      // happens between the two popups.
       const permitSingle: PermitSingle = buildOrderPermit({
         ownerNonce: makerStatus.permit2DexNonce,
         makerToken: pendingOrder.makerToken,
@@ -191,6 +202,18 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
         dex: dexAddress,
       });
 
+      // Wallet popup #1: the Order itself.
+      const signature = await signTypedDataAsync({
+        domain: buildDomain(chainId, dexAddress),
+        types: ORDER_TYPES,
+        primaryType: "Order",
+        message: pendingOrder as unknown as Record<string, unknown>,
+      } as Parameters<typeof signTypedDataAsync>[0]);
+
+      // Wallet popup #2: the per-order Permit2 PermitSingle. amount /
+      // expiration are bound 1:1 to the order, so this signature only
+      // authorises what the order itself can spend — no idle blanket
+      // allowance is created.
       let permitSignature: Hex;
       try {
         permitSignature = (await signTypedDataAsync({

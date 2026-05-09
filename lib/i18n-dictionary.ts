@@ -219,6 +219,12 @@ export type Dictionary = {
   "trade.recentTrades.loading": string;
   "trade.recentTrades.empty": string;
 
+  // Trade page — StandingAllowanceBanner (round-2 → round-3 cleanup)
+  "trade.standingAllowance.headline": string;
+  "trade.standingAllowance.body": string;
+  "trade.standingAllowance.revokeAll": string;
+  "trade.standingAllowance.revoking": string;
+
   // Trade page — SignConfirmModal
   "trade.signModal.title": string;
   "trade.signModal.close": string;
@@ -502,6 +508,14 @@ const en: Dictionary = {
   "trade.recentTrades.syncing": "syncing",
   "trade.recentTrades.loading": "Loading recent fills…",
   "trade.recentTrades.empty": "No fills in the last 24 hours.",
+
+  // Trade page — StandingAllowanceBanner
+  "trade.standingAllowance.headline":
+    "Old standing allowance detected",
+  "trade.standingAllowance.body":
+    "Your wallet still grants Permit2 a blanket spend right on SCENTDEX for {tokens}. Round-3 orders carry their own per-order signatures, so this allowance is no longer needed and is broader than what you actually want to authorise. Revoke to collapse it to zero — one transaction per token.",
+  "trade.standingAllowance.revokeAll": "Revoke {count}",
+  "trade.standingAllowance.revoking": "Revoking… ({remaining} left)",
 
   // Trade page — SignConfirmModal
   "trade.signModal.title": "Confirm order signature",
@@ -796,6 +810,14 @@ const ja: Dictionary = {
   "trade.recentTrades.syncing": "同期中",
   "trade.recentTrades.loading": "最近の約定を読み込み中…",
   "trade.recentTrades.empty": "過去 24 時間に約定はありません。",
+
+  // Trade page — StandingAllowanceBanner
+  "trade.standingAllowance.headline":
+    "以前の包括承認が残っています",
+  "trade.standingAllowance.body":
+    "{tokens} について、Permit2 から SCENTDEX への包括的な使用許可がまだ残っています。Round-3 の注文は注文ごとに個別署名を含むので、この包括承認はもう不要で、本来許可したい範囲より広くなっています。「解除」を押すとゼロに戻ります（トークンごとに 1 トランザクション）。",
+  "trade.standingAllowance.revokeAll": "{count} 件を解除",
+  "trade.standingAllowance.revoking": "解除中…（残り {remaining} 件）",
 
   // Trade page — SignConfirmModal
   "trade.signModal.title": "注文署名の確認",
