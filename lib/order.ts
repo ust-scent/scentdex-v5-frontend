@@ -1,5 +1,6 @@
 import {
   encodeAbiParameters,
+  hashTypedData,
   keccak256,
   parseUnits,
   toHex,
@@ -74,6 +75,30 @@ export const ORDER_TYPEHASH: Hex = keccak256(
     "Order(address maker,address makerToken,address takerToken,uint256 makerAmount,uint256 takerAmount,uint64 expiry,uint256 nonce,bytes32 salt,address feeSide,uint16 feeBps)",
   ),
 );
+
+/**
+ * Compute the full EIP-712 digest for an Order (the one wallets sign and
+ * the V5 contract emits as `orderHash`). This is the canonical identifier
+ * the off-chain order book uses as primary key, and the value the cancel
+ * endpoint expects in the typed-data message under `orderHash: bytes32`.
+ *
+ * Replaces the placeholder "use signature as orderHash" hack that landed
+ * in Phase 3.5 — that worked as a unique key but produced a 65-byte value
+ * which viem (correctly) rejected when the cancel UI re-encoded it as a
+ * bytes32 field.
+ */
+export function hashOrder(
+  order: Order,
+  chainId: number,
+  verifyingContract: Address,
+): Hex {
+  return hashTypedData({
+    domain: buildDomain(chainId, verifyingContract),
+    types: ORDER_TYPES,
+    primaryType: "Order",
+    message: order as unknown as Record<string, unknown>,
+  } as Parameters<typeof hashTypedData>[0]);
+}
 
 export function structHash(order: Order): Hex {
   return keccak256(

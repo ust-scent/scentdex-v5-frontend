@@ -7,7 +7,7 @@ import {
 } from "viem";
 
 import { SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
-import { ORDER_TYPES, buildDomain, type Order } from "@/lib/order";
+import { ORDER_TYPES, buildDomain, hashOrder, type Order } from "@/lib/order";
 import type { SerialisedPermitSingle } from "@/lib/permit2";
 import {
   insertOrder,
@@ -27,9 +27,12 @@ import {
  * endpoints live alongside this file.
  *
  * The on-chain orderHash (EIP-712 digest) is the canonical identifier.
- * For Phase 3.5 we still use the signature itself as the primary key —
- * always 65 bytes, always unique per signed order. The proper digest
- * computation lands when the indexer goes in (Phase 3.5b).
+ * Phase 3.5b: computed via `hashOrder()` (viem `hashTypedData`) so the
+ * value matches what the V5 contract emits as `orderHash` in OrderFilled
+ * / OrderCancelled and what the cancel UI re-encodes as bytes32 in its
+ * cancel-auth typed-data message. Replaces an earlier placeholder that
+ * stuffed the 65-byte signature into the same slot (caused viem to
+ * reject the cancel sign-typed-data call with "Expected bytes32, ...").
  */
 
 export const runtime = "nodejs";
@@ -111,7 +114,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const orderHash: Hex = signature; // placeholder primary key — see file header
+  const orderHash: Hex = hashOrder(reified, chainId, dexAddress);
 
   const stored: StoredOrder = {
     orderHash,

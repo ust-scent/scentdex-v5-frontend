@@ -103,11 +103,57 @@ export const PERMIT2_ABI = [
 ] as const;
 
 /**
- * SCENTDEX V5 — read-only fragments used by the trade UI: the OrderFilled
- * event (drives Stats + Recent Trades) and the `pairConfig(a, b)` getter
- * (drives the maker-fee tile + lets the maker sign an Order whose feeSide
- * and feeBps match the current on-chain pair config).
+ * SCENTDEX V5 — fragments used by the trade UI:
+ *   - OrderFilled event (Stats + Recent Trades)
+ *   - pairConfig(a, b) getter (maker-fee tile + pair-config aware signing)
+ *   - fillOrder() / cancelOrder() (taker fill + maker on-chain cancel)
+ *
+ * The Order tuple and PermitSingle tuple here must match the Solidity
+ * struct layouts byte-for-byte. See ScentDexV5.sol lines 116-127 + 283.
  */
+
+const ORDER_TUPLE = {
+  type: "tuple",
+  name: "order",
+  components: [
+    { name: "maker", type: "address" },
+    { name: "makerToken", type: "address" },
+    { name: "takerToken", type: "address" },
+    { name: "makerAmount", type: "uint256" },
+    { name: "takerAmount", type: "uint256" },
+    { name: "expiry", type: "uint64" },
+    { name: "nonce", type: "uint256" },
+    { name: "salt", type: "bytes32" },
+    { name: "feeSide", type: "address" },
+    { name: "feeBps", type: "uint16" },
+  ],
+} as const;
+
+const PERMIT_SINGLE_TUPLE_TAKER = {
+  type: "tuple",
+  name: "takerPermit",
+  components: [
+    {
+      type: "tuple",
+      name: "details",
+      components: [
+        { name: "token", type: "address" },
+        { name: "amount", type: "uint160" },
+        { name: "expiration", type: "uint48" },
+        { name: "nonce", type: "uint48" },
+      ],
+    },
+    { name: "spender", type: "address" },
+    { name: "sigDeadline", type: "uint256" },
+  ],
+} as const;
+
+const PERMIT_SINGLE_TUPLE_MAKER = {
+  type: "tuple",
+  name: "makerPermit",
+  components: PERMIT_SINGLE_TUPLE_TAKER.components,
+} as const;
+
 export const SCENTDEX_V5_ABI = [
   {
     type: "event",
@@ -142,6 +188,39 @@ export const SCENTDEX_V5_ABI = [
         ],
       },
     ],
+  },
+  {
+    type: "function",
+    name: "fillOrder",
+    stateMutability: "nonpayable",
+    inputs: [
+      ORDER_TUPLE,
+      { name: "signature", type: "bytes" },
+      { name: "fillMakerAmount", type: "uint256" },
+      PERMIT_SINGLE_TUPLE_TAKER,
+      { name: "takerPermitSignature", type: "bytes" },
+      PERMIT_SINGLE_TUPLE_MAKER,
+      { name: "makerPermitSignature", type: "bytes" },
+    ],
+    outputs: [
+      { name: "actualMakerFilled", type: "uint256" },
+      { name: "actualTakerPaid", type: "uint256" },
+      { name: "feePaid", type: "uint256" },
+    ],
+  },
+  {
+    type: "function",
+    name: "cancelOrder",
+    stateMutability: "nonpayable",
+    inputs: [ORDER_TUPLE],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "filledMakerAmount",
+    stateMutability: "view",
+    inputs: [{ name: "orderHash", type: "bytes32" }],
+    outputs: [{ name: "", type: "uint256" }],
   },
 ] as const;
 
