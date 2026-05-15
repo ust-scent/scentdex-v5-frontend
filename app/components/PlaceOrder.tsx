@@ -498,7 +498,11 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
           <div className="mt-2 px-3 py-2 rounded-md border border-amber-500/30 bg-amber-500/[0.05] text-[11px] text-amber-300 leading-relaxed">
             {t("trade.placeOrder.caseBTakerNote")
               .replace("{feeSide}", cfg.feeSide === pair.base ? pair.base : pair.quote)
-              .replace("{quote}", side === "sell" ? pair.quote : pair.base)
+              // {quote} = the currency the taker actually receives (i.e. the
+              // maker's makerToken in this fill). For a sell-side maker order
+              // this is pair.quote; for a buy-side maker order this is pair.base.
+              .replace("{quote}", side === "sell" ? pair.base : pair.quote)
+              // {makerToken} = the token the maker pays out (= maker's makerToken).
               .replace("{makerToken}", side === "sell" ? pair.base : pair.quote)
               .replace(
                 "{bps}",
