@@ -299,6 +299,10 @@ export type Dictionary = {
   "trade.fillError.revertedWith": string;
   "trade.fillError.reverted": string;
   "trade.fillError.unknown": string;
+  "trade.fillError.gasLimitTooHigh": string;
+  "trade.fillError.insufficientFunds": string;
+  "trade.fillError.networkError": string;
+  "trade.fillError.closeAndRetry": string;
 };
 
 const en: Dictionary = {
@@ -652,6 +656,13 @@ const en: Dictionary = {
   "trade.fillError.revertedWith": "Reverted with",
   "trade.fillError.reverted": "Transaction reverted on chain.",
   "trade.fillError.unknown": "Fill failed for an unknown reason.",
+  "trade.fillError.gasLimitTooHigh":
+    "Gas limit was set too high. Refresh the page and try again.",
+  "trade.fillError.insufficientFunds":
+    "Insufficient ETH in your wallet to cover gas.",
+  "trade.fillError.networkError":
+    "Network error while reaching the chain. Please retry.",
+  "trade.fillError.closeAndRetry": "Close and try again",
 };
 
 const ja: Dictionary = {
@@ -1008,6 +1019,13 @@ const ja: Dictionary = {
   "trade.fillError.revertedWith": "コントラクト revert",
   "trade.fillError.reverted": "オンチェーン取引が失敗しました。",
   "trade.fillError.unknown": "不明な理由で約定に失敗しました。",
+  "trade.fillError.gasLimitTooHigh":
+    "ガス上限の設定が高すぎます。ページを再読み込みしてからお試しください。",
+  "trade.fillError.insufficientFunds":
+    "ウォレットの ETH 残高がガス代に対して不足しています。",
+  "trade.fillError.networkError":
+    "ネットワーク接続エラーが発生しました。もう一度お試しください。",
+  "trade.fillError.closeAndRetry": "閉じてやり直す",
 };
 
 // Stub other locales by reusing English. Full translations land in subsequent passes.

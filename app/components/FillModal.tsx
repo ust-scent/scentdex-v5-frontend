@@ -375,6 +375,11 @@ export function FillModal({
 
   const buttonLabel = (() => {
     if (isAlreadyDone) return "Filled";
+    // Once we've shown an error banner, the same click would just re-fail.
+    // Steer the user to close + reopen (which will refetch the order's
+    // current status and rebuild a fresh permit) instead of letting them
+    // re-press into the same wall.
+    if (phase === "error") return t("trade.fillError.closeAndRetry");
     if (phase === "approving-erc20" || takerStatus.isApproving)
       return `Approving ${youPaySym}…`;
     if (phase === "awaiting-permit-sig" || signing)
@@ -387,12 +392,20 @@ export function FillModal({
     return `Fill — pay ${youPay} ${youPaySym}`;
   })();
 
-  const buttonAction = needsErc20Approval
-    ? () => {
-        setPhase("approving-erc20");
-        takerStatus.approve();
-      }
-    : onFillClick;
+  // In `error` we repurpose the primary CTA into a "close & retry" action.
+  // Retrying on the same stale modal state would just hit the same revert,
+  // so the recovery path is: close → board refetches order status → user
+  // reopens FillModal if the order is still open. Combining "block re-fill"
+  // and "close in one click" beats either alone.
+  const buttonAction =
+    phase === "error"
+      ? onClose
+      : needsErc20Approval
+      ? () => {
+          setPhase("approving-erc20");
+          takerStatus.approve();
+        }
+      : onFillClick;
 
   const buttonDisabled =
     isAlreadyDone ||

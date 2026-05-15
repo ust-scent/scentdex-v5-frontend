@@ -39,6 +39,7 @@ function tStr(t: Translator, key: TranslationKey): string {
   return typeof v === "string" ? v : v.join(" ");
 }
 
+/** ABI-derived V5 custom-error names → friendly i18n keys. */
 const ERROR_KEY_MAP: Record<string, TranslationKey> = {
   FillExceedsMaker: "trade.fillError.alreadyFilled",
   OrderAlreadyCancelled: "trade.fillError.cancelled",
@@ -59,6 +60,25 @@ const ERROR_KEY_MAP: Record<string, TranslationKey> = {
   FeeSideMismatch: "trade.fillError.feeSideMismatch",
   FeeBpsMismatch: "trade.fillError.feeBpsMismatch",
 };
+
+/** Non-ABI signal strings that viem / RPC providers surface as `errorName`
+ *  or that show up free-form in `shortMessage`. Tested by lowercase
+ *  substring match (everything in the keys must already be lowercase). */
+const GENERIC_SIGNAL_MAP: Array<[string, TranslationKey]> = [
+  ["gas limit too high", "trade.fillError.gasLimitTooHigh"],
+  ["insufficient funds", "trade.fillError.insufficientFunds"],
+  ["fetch failed", "trade.fillError.networkError"],
+  ["network request failed", "trade.fillError.networkError"],
+  ["http request failed", "trade.fillError.networkError"],
+];
+
+function matchGenericSignal(s: string): TranslationKey | undefined {
+  const lower = s.toLowerCase();
+  for (const [needle, key] of GENERIC_SIGNAL_MAP) {
+    if (lower.includes(needle)) return key;
+  }
+  return undefined;
+}
 
 /** True when the error originated in the wallet UI, not in a contract revert. */
 function isWalletRejection(message: string): boolean {
@@ -98,15 +118,24 @@ export function parseFillError(err: unknown, t: Translator): string {
       if (errorName && errorName in ERROR_KEY_MAP) {
         return tStr(t, ERROR_KEY_MAP[errorName]);
       }
-      if (errorName) {
-        return `${tStr(t, "trade.fillError.revertedWith")}: ${errorName}`;
-      }
+      // Some non-V5 conditions (eth_estimateGas hints, RPC gas caps) show
+      // up where `errorName` would be — translate the well-known ones and
+      // drop the raw English the rest of the way.
+      const generic = errorName ? matchGenericSignal(errorName) : undefined;
+      if (generic) return tStr(t, generic);
+      // Custom error fired but its name isn't in our map AND isn't a known
+      // generic signal — show a clean "reverted" line instead of leaking
+      // the bare ABI string into the UI.
       return tStr(t, "trade.fillError.reverted");
     }
 
-    // Not a contract revert, but still a viem error — surface its short
-    // form rather than the multi-paragraph debug dump.
-    return err.shortMessage || err.message.slice(0, 200);
+    // Not a contract revert — viem still gave us a BaseError. Check the
+    // shortMessage for known network / RPC signals before falling back to
+    // a generic line. We DO NOT surface the raw English shortMessage to
+    // end users (i18n leak + scary debug text).
+    const shortMatch = matchGenericSignal(err.shortMessage || err.message);
+    if (shortMatch) return tStr(t, shortMatch);
+    return tStr(t, "trade.fillError.unknown");
   }
 
   // Plain-ish Error (or anything else thrown).
@@ -114,5 +143,7 @@ export function parseFillError(err: unknown, t: Translator): string {
   if (isWalletRejection(message)) {
     return tStr(t, "trade.fillError.walletRejected");
   }
-  return message.slice(0, 200);
+  const genericFromMsg = matchGenericSignal(message);
+  if (genericFromMsg) return tStr(t, genericFromMsg);
+  return tStr(t, "trade.fillError.unknown");
 }
