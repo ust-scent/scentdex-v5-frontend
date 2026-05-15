@@ -188,6 +188,7 @@ export type Dictionary = {
   "trade.placeOrder.total": string;
   "trade.placeOrder.youReceive": string;
   "trade.placeOrder.makerFee": string;
+  "trade.placeOrder.caseBTakerNote": string;
   // Round-5 conversational labels
   "trade.placeOrder.sizeSellQuestion": string;
   "trade.placeOrder.sizeBuyQuestion": string;
@@ -312,6 +313,9 @@ export type Dictionary = {
   "trade.fillModal.maker": string;
   "trade.fillModal.price": string;
   "trade.fillModal.youReceive": string;
+  "trade.fillModal.youReceiveGross": string;
+  "trade.fillModal.youReceiveNet": string;
+  "trade.fillModal.protocolFee": string;
   "trade.fillModal.youPay": string;
   "trade.fillModal.orderStatus": string;
   "trade.fillModal.cantFillOwn": string;
@@ -561,6 +565,8 @@ const en: Dictionary = {
   "trade.placeOrder.total": "Total",
   "trade.placeOrder.youReceive": "You receive (at least)",
   "trade.placeOrder.makerFee": "Protocol fee ({bps}%) (maker)",
+  "trade.placeOrder.caseBTakerNote":
+    "When a taker fills this order by selling {feeSide}, the protocol fee ({bps}%) is deducted from the taker's {quote} receive. Your payment ({makerToken}) is unchanged.",
   "trade.placeOrder.connectWallet": "Connect wallet",
   "trade.placeOrder.wrongNetwork": "Switch to a supported network",
   "trade.placeOrder.pairNotAvailable": "Pair not available on this network",
@@ -700,6 +706,9 @@ const en: Dictionary = {
   "trade.fillModal.maker": "Maker",
   "trade.fillModal.price": "Price",
   "trade.fillModal.youReceive": "You receive",
+  "trade.fillModal.youReceiveGross": "You receive (before fee)",
+  "trade.fillModal.youReceiveNet": "You receive (after fee)",
+  "trade.fillModal.protocolFee": "Protocol fee ({bps}%)",
   "trade.fillModal.youPay": "You pay",
   "trade.fillModal.orderStatus": "Order status",
   "trade.fillModal.cantFillOwn": "You can't fill your own order. Use Cancel instead.",
@@ -954,6 +963,8 @@ const ja: Dictionary = {
   "trade.placeOrder.total": "合計",
   "trade.placeOrder.youReceive": "受取額（最低）",
   "trade.placeOrder.makerFee": "プロトコル手数料 ({bps}%)（メイカー）",
+  "trade.placeOrder.caseBTakerNote":
+    "テイカーが {feeSide} を売却して約定した場合、テイカー側の受取 {quote} から {bps}% が差し引かれます。あなたの支払額（{makerToken}）は変わりません。",
   "trade.placeOrder.connectWallet": "ウォレットを接続",
   "trade.placeOrder.wrongNetwork": "対応ネットワークに切り替え",
   "trade.placeOrder.pairNotAvailable": "このネットワークでは取引ペアが利用できません",
@@ -1094,6 +1105,9 @@ const ja: Dictionary = {
   "trade.fillModal.maker": "メイカー",
   "trade.fillModal.price": "価格",
   "trade.fillModal.youReceive": "受取",
+  "trade.fillModal.youReceiveGross": "受取（手数料引き前）",
+  "trade.fillModal.youReceiveNet": "実際の受取",
+  "trade.fillModal.protocolFee": "プロトコル手数料 ({bps}%)",
   "trade.fillModal.youPay": "支払",
   "trade.fillModal.orderStatus": "注文ステータス",
   "trade.fillModal.cantFillOwn": "自分の注文は約定できません。代わりにキャンセルしてください。",

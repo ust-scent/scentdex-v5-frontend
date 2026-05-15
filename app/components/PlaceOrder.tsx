@@ -486,6 +486,28 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
             dim
           />
         </div>
+        {/* V6 Case B disclosure for the maker side. When the maker isn't the
+             feeSide-seller (e.g. maker buys SCENT with feeSide=SCENT), the
+             contract still charges 10% — but on the *taker's* receive of the
+             quote currency, not the maker's. The maker's totals shown above
+             remain correct (no fee on their side); this note tells the maker
+             how the symmetric fee will manifest when a taker fills the order
+             by selling the feeSide token. Without this, a maker posting a
+             SCENT-buy order would assume "no fee" applies anywhere. */}
+        {(side === "sell" ? cfg.feeSide === pair.quote : cfg.feeSide === pair.base) ? (
+          <div className="mt-2 px-3 py-2 rounded-md border border-amber-500/30 bg-amber-500/[0.05] text-[11px] text-amber-300 leading-relaxed">
+            {t("trade.placeOrder.caseBTakerNote")
+              .replace("{feeSide}", cfg.feeSide === pair.base ? pair.base : pair.quote)
+              .replace("{quote}", side === "sell" ? pair.quote : pair.base)
+              .replace("{makerToken}", side === "sell" ? pair.base : pair.quote)
+              .replace(
+                "{bps}",
+                (cfg.feeBps / 100).toLocaleString("en-US", {
+                  maximumFractionDigits: 2,
+                }),
+              )}
+          </div>
+        ) : null}
 
         <ExpiryRow
           choice={expiry}

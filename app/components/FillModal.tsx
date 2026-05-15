@@ -5,6 +5,7 @@ import { type Address, type Hex, formatUnits } from "viem";
 import {
   useAccount,
   useChainId,
+  useReadContract,
   useSignTypedData,
   useWaitForTransactionReceipt,
   useWriteContract,
@@ -129,7 +130,42 @@ export function FillModal({
   const t = useTranslator();
   const { signTypedDataAsync, isPending: signing } = useSignTypedData();
   const writeTx = useWriteContract();
-  const writeReceipt = useWaitForTransactionReceipt({
+
+  // V6 ADR-0007: previewFee is the authoritative fee-disclosure source.
+  // For Case B fills the taker absorbs a 10% carve-out on the maker→taker
+  // leg; without surfacing that here the taker would expect more makerToken
+  // than they actually receive. The contract returns (0, address(0)) for
+  // any non-fillable state (paused / cancelled / expired / sized wrong),
+  // so a non-zero feeAmount IS the live, on-chain truth about this fill.
+  const previewArgs = useMemo(() => {
+    if (!order) return undefined;
+    const remaining = BigInt(order.order.makerAmount) - BigInt(order.filledMakerAmount);
+    if (remaining <= 0n) return undefined;
+    return [
+      {
+        maker: order.order.maker,
+        makerToken: order.order.makerToken,
+        takerToken: order.order.takerToken,
+        makerAmount: BigInt(order.order.makerAmount),
+        takerAmount: BigInt(order.order.takerAmount),
+        expiry: BigInt(order.order.expiry),
+        nonce: BigInt(order.order.nonce),
+        salt: order.order.salt,
+        feeSide: order.order.feeSide,
+        feeBps: order.order.feeBps,
+      },
+      remaining,
+    ] as const;
+  }, [order]);
+  const previewQuery = useReadContract({
+    abi: SCENTDEX_V5_ABI,
+    address: dexAddress,
+    functionName: "previewFee",
+    args: previewArgs,
+    query: { enabled: Boolean(dexAddress && previewArgs) },
+  });
+
+const writeReceipt = useWaitForTransactionReceipt({
     hash: writeTx.data,
     query: { enabled: Boolean(writeTx.data) },
   });
@@ -252,6 +288,30 @@ export function FillModal({
 
   const youReceiveSym = makerTokenMeta?.symbol ?? "?";
   const youPaySym = takerTokenMeta?.symbol ?? "?";
+
+  // V6 Case B disclosure: feeAmount / feeToken come from on-chain previewFee.
+  // Case A: feeToken == takerToken — the taker's makerToken receive is full,
+  //         and the fee is carved from the taker's takerToken payment leg
+  //         (the maker absorbs it; existing PlaceOrder UI shows this).
+  // Case B: feeToken == makerToken — the taker's makerToken receive is
+  //         reduced by feeAmount. Surface gross / fee / net to keep the
+  //         taker's expectations aligned with what actually lands in their
+  //         wallet.
+  const previewFee = previewQuery.data ?? [0n, "0x0000000000000000000000000000000000000000" as Address];
+  const feeAmount = previewFee[0];
+  const feeToken = previewFee[1];
+  const feeAppliesToTakerReceive =
+    feeAmount > 0n &&
+    feeToken.toLowerCase() === order.order.makerToken.toLowerCase();
+  const netReceive = feeAppliesToTakerReceive
+    ? remainingMaker - feeAmount
+    : remainingMaker;
+  const youReceiveNet = formatBalance(netReceive, baseDecimals);
+  const youReceiveFee = formatBalance(feeAmount, baseDecimals);
+  const feeBpsForLabel = order.order.feeBps;
+  const feeBpsDisplay = (feeBpsForLabel / 100).toLocaleString("en-US", {
+    maximumFractionDigits: 2,
+  });
   const priceNumber =
     Number(formatUnits(remainingTaker, quoteDecimals)) /
     Math.max(Number(formatUnits(remainingMaker, baseDecimals)), 1e-18);
@@ -450,15 +510,48 @@ export function FillModal({
               </span>
             }
           />
-          <Row
-            label={t("trade.fillModal.youReceive")}
-            value={
-              <span className="font-mono tnum text-buy">
-                {youReceive} {youReceiveSym}
-              </span>
-            }
-            emphasis
-          />
+          {feeAppliesToTakerReceive ? (
+            <>
+              <Row
+                label={t("trade.fillModal.youReceiveGross")}
+                value={
+                  <span className="font-mono tnum text-fg-dim">
+                    {youReceive} {youReceiveSym}
+                  </span>
+                }
+              />
+              <Row
+                label={t("trade.fillModal.protocolFee").replace(
+                  "{bps}",
+                  feeBpsDisplay,
+                )}
+                value={
+                  <span className="font-mono tnum text-fg-dim">
+                    −{youReceiveFee} {youReceiveSym}
+                  </span>
+                }
+              />
+              <Row
+                label={t("trade.fillModal.youReceiveNet")}
+                value={
+                  <span className="font-mono tnum text-buy">
+                    {youReceiveNet} {youReceiveSym}
+                  </span>
+                }
+                emphasis
+              />
+            </>
+          ) : (
+            <Row
+              label={t("trade.fillModal.youReceive")}
+              value={
+                <span className="font-mono tnum text-buy">
+                  {youReceive} {youReceiveSym}
+                </span>
+              }
+              emphasis
+            />
+          )}
           <Row
             label={t("trade.fillModal.youPay")}
             value={

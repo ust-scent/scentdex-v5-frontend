@@ -222,6 +222,31 @@ export const SCENTDEX_V5_ABI = [
     inputs: [{ name: "orderHash", type: "bytes32" }],
     outputs: [{ name: "", type: "uint256" }],
   },
+  // V6 r1+ (ADR-0007 sym_fee_005). Reports the protocol fee that a hypothetical
+  // fill of `fillMakerAmount` would route to the treasury, plus the token in
+  // which that fee is denominated. The V6 contract returns (0, address(0))
+  // for any non-fillable order (paused, expired, cancelled, sized wrong),
+  // so the frontend can treat a non-zero (feeAmount, feeToken) as the
+  // authoritative net-receive disclosure for the taker. Older V5 contracts
+  // do not expose this function — callers must guard with try/catch when
+  // running against a chain where SCENTDEX_V5_ADDRESS resolves to V5.
+  {
+    type: "function",
+    name: "previewFee",
+    stateMutability: "view",
+    inputs: [ORDER_TUPLE, { name: "fillMakerAmount", type: "uint256" }],
+    outputs: [
+      { name: "feeAmount", type: "uint256" },
+      { name: "feeToken", type: "address" },
+    ],
+  },
+  {
+    type: "function",
+    name: "paused",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "bool" }],
+  },
 ] as const;
 
 /**
