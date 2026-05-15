@@ -533,6 +533,16 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
           )
         ) : null}
 
+        {signing || makerStatus.isApproving ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="px-3 py-2 rounded-md border border-amber-500/30 bg-amber-500/[0.05] text-[12px] text-amber-300"
+          >
+            {t("trade.fillModal.walletPopupHint")}
+          </div>
+        ) : null}
+
         <button
           onClick={startSign}
           disabled={!canSign || signing || makerStatus.isApproving}

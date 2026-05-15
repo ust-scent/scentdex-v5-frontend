@@ -492,6 +492,15 @@ export function FillModal({
             <Note kind="success">{t("trade.fillModal.settled")}</Note>
           ) : null}
 
+          {phase === "approving-erc20" ||
+          phase === "awaiting-permit-sig" ||
+          phase === "submitting-tx" ||
+          takerStatus.isApproving ||
+          signing ||
+          writeTx.isPending ? (
+            <Note kind="warn">{t("trade.fillModal.walletPopupHint")}</Note>
+          ) : null}
+
           <button
             onClick={buttonAction}
             disabled={buttonDisabled}

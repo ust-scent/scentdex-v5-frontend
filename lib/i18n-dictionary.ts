@@ -331,6 +331,7 @@ export type Dictionary = {
   "trade.fillModal.statusFilled": string;
   "trade.fillModal.statusCancelled": string;
   "trade.fillModal.statusExpired": string;
+  "trade.fillModal.walletPopupHint": string;
 };
 
 const en: Dictionary = {
@@ -720,6 +721,8 @@ const en: Dictionary = {
   "trade.fillModal.statusFilled": "filled",
   "trade.fillModal.statusCancelled": "cancelled",
   "trade.fillModal.statusExpired": "expired",
+  "trade.fillModal.walletPopupHint":
+    "Check your wallet popup and approve / sign the request to continue.",
 };
 
 const ja: Dictionary = {
@@ -1112,6 +1115,8 @@ const ja: Dictionary = {
   "trade.fillModal.statusFilled": "約定済み",
   "trade.fillModal.statusCancelled": "キャンセル済み",
   "trade.fillModal.statusExpired": "期限切れ",
+  "trade.fillModal.walletPopupHint":
+    "ウォレットのポップアップを確認して、承認または署名のボタンを押してください。",
 };
 
 // Stub other locales by reusing English. Full translations land in subsequent passes.
