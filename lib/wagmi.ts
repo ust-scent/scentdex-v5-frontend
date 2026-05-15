@@ -14,7 +14,7 @@ import { mainnet, sepolia } from "wagmi/chains";
  * Switch to mainnet.id (1) for production.
  */
 export const TARGET_CHAIN_ID: number =
-  Number(process.env.NEXT_PUBLIC_CHAIN_ID) || sepolia.id;
+  Number(process.env.NEXT_PUBLIC_CHAIN_ID) || mainnet.id;
 
 export const wagmiConfig = getDefaultConfig({
   appName: "SCENTDEX",
@@ -22,7 +22,9 @@ export const wagmiConfig = getDefaultConfig({
   appUrl: "https://dex.scenttoken.com",
   appIcon: "https://dex.scenttoken.com/logo.png",
   projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "scentdex-dev",
-  // Sepolia listed first so it becomes the default chain offered to users.
-  chains: [sepolia, mainnet],
+  // Mainnet first so RainbowKit offers it as the default after the
+  // 2026-05-15 mainnet contract deploy. Sepolia stays in the list for the
+  // existing UAT workflow.
+  chains: [mainnet, sepolia],
   ssr: true,
 });

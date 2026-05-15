@@ -96,7 +96,7 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
   const awaitingApproval = useRef(false);
 
   // -- Form-derived totals ---------------------------------------------
-  const cfg = feeConfig(pair);
+  const cfg = feeConfig(pair, chainId);
   const totals = useMemo(() => {
     const sizeN = Number(size);
     const priceN = Number(unitPrice);

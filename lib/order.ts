@@ -177,11 +177,11 @@ export function expiryFromChoice(
  *
  * `size` is denominated on the *maker side* — the side the user gives up:
  *
- *   - SELL testSCENT: size is in testSCENT (how many to sell)
- *                     makerToken=testSCENT,  takerToken=testJPYC
+ *   - SELL SCENT: size is in SCENT (how many to sell)
+ *                     makerToken=SCENT,  takerToken=JPYC
  *                     makerAmount=size,      takerAmount=size * unitPrice
- *   - BUY  testSCENT: size is in testJPYC (budget to spend)
- *                     makerToken=testJPYC,   takerToken=testSCENT
+ *   - BUY  SCENT: size is in JPYC (budget to spend)
+ *                     makerToken=JPYC,   takerToken=SCENT
  *                     makerAmount=size,      takerAmount=size / unitPrice
  *
  * `unitPrice` is always quote per 1 base, no matter which side. Matches

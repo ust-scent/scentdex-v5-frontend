@@ -3,12 +3,12 @@ import type { Address } from "viem";
 /**
  * SCENTDEX V5 contract addresses per chain.
  *
- * Mainnet (1):       TBD — pending external audit + deployment
- * Sepolia (11155111): TBD — populate after running scripts/deploy-sepolia.ts
- *                     in the scentdex-v5 repo (sepolia-deploy branch)
+ * Mainnet (1):       deployed 2026-05-15 (1-min timelock build for prod-test
+ *                    phase; 72h-timelock rebuild planned before public launch).
+ * Sepolia (11155111): UAT environment for tester walkthroughs.
  */
 export const SCENTDEX_V5_ADDRESS: Record<number, Address | undefined> = {
-  1: undefined,
+  1: "0x3293462B4Ef0dbC20817562d295a368556689249",
   11155111: "0x42349e93B90c69536Ab8a2cc5C55b3cd14872395",
 };
 
