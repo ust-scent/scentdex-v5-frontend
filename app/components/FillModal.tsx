@@ -204,6 +204,8 @@ export function FillModal({
       // Fire-and-forget on errors: the taker already got their tokens at
       // this point and the worst case is that the row sits stale until the
       // next manual sync — far better than blocking the modal's "done" UI.
+      // Errors are swallowed silently to keep API paths / RPC URLs out of
+      // the browser console (sec policy: nothing identifiable in devtools).
       if (order) {
         void fetch(`/api/orders/${order.orderHash}/filled`, {
           method: "POST",
@@ -213,20 +215,9 @@ export function FillModal({
             chainId,
           }),
         })
-          .then((r) =>
-            r.ok
-              ? null
-              : r.json().catch(() => null).then((j) =>
-                  console.warn(
-                    "[fill-sync] /api/orders/.../filled returned",
-                    r.status,
-                    j,
-                  ),
-                ),
-          )
-          .catch((e) =>
-            console.warn("[fill-sync] off-chain mirror POST failed", e),
-          )
+          .catch(() => {
+            // intentional no-op — see comment above
+          })
           .finally(() => onFilled());
       } else {
         onFilled();
