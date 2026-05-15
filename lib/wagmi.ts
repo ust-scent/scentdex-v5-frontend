@@ -1,21 +1,29 @@
 import { getDefaultConfig } from "@rainbow-me/rainbowkit";
 import { fallback, http } from "viem";
-import { mainnet, sepolia } from "wagmi/chains";
+import { mainnet, sepolia, type Chain } from "wagmi/chains";
 
 /**
  * Wagmi config for SCENTDEX V5.
- * - Mainnet: production
- * - Sepolia: testnet burn-in phase
+ *
+ * Production = mainnet only. Sepolia stays in the codebase for local
+ * dev and UAT regression but is hidden from end users in production
+ * RainbowKit chain switcher (no point offering a testnet to traders
+ * holding real SCENT / JPYC / USDT).
+ *
+ * To re-enable Sepolia in the chain picker for local development, set
+ *   NEXT_PUBLIC_ENABLE_SEPOLIA=1
+ * in `.env.local` before `npm run dev`.
  *
  * WalletConnect projectId is taken from env. Get one for free at
  * https://cloud.walletconnect.com/. Without it, WalletConnect-based
  * wallets are degraded but Injected (MetaMask / Rabby / Coinbase) still work.
  *
  * TARGET_CHAIN_ID controls which chain the app forces users onto.
- * Switch to mainnet.id (1) for production.
  */
 export const TARGET_CHAIN_ID: number =
   Number(process.env.NEXT_PUBLIC_CHAIN_ID) || mainnet.id;
+
+const ENABLE_SEPOLIA = process.env.NEXT_PUBLIC_ENABLE_SEPOLIA === "1";
 
 /**
  * Explicit RPC fallback chain per network. RainbowKit's default transports
@@ -40,10 +48,12 @@ export const wagmiConfig = getDefaultConfig({
   appUrl: "https://dex.scenttoken.com",
   appIcon: "https://dex.scenttoken.com/logo.png",
   projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "scentdex-dev",
-  // Mainnet first so RainbowKit offers it as the default after the
-  // 2026-05-15 mainnet contract deploy. Sepolia stays in the list for the
-  // existing UAT workflow.
-  chains: [mainnet, sepolia],
+  // Mainnet only in production. Sepolia is added back when
+  // NEXT_PUBLIC_ENABLE_SEPOLIA=1 (local dev / regression).
+  chains: (ENABLE_SEPOLIA ? [mainnet, sepolia] : [mainnet]) as readonly [
+    Chain,
+    ...Chain[],
+  ],
   transports: {
     [mainnet.id]: fallback([
       ...(ALCHEMY_MAINNET ? [http(ALCHEMY_MAINNET)] : []),
@@ -52,6 +62,9 @@ export const wagmiConfig = getDefaultConfig({
       http("https://cloudflare-eth.com"),
       http("https://ethereum-rpc.publicnode.com"),
     ]),
+    // Sepolia transport stays defined even when the chain isn't in the
+    // RainbowKit picker — useful for any local code path that explicitly
+    // targets chainId 11155111.
     [sepolia.id]: fallback([
       ...(ALCHEMY_SEPOLIA ? [http(ALCHEMY_SEPOLIA)] : []),
       http("https://11155111.rpc.thirdweb.com"),
