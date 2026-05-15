@@ -33,7 +33,16 @@ export function StatsBar({ pair }: { pair: Pair }) {
     stats.high24h !== undefined ? fmtPrice(stats.high24h) : "—";
   const lowText = stats.low24h !== undefined ? fmtPrice(stats.low24h) : "—";
 
-  const feePct = cfg.feeBps > 0 ? `${(cfg.feeBps / 100).toFixed(0)}%` : "—";
+  // Use locale-aware formatting so sub-1% rates (e.g. 30 bps = 0.3%) survive
+  // — the previous toFixed(0) collapsed them to "0%" and made traders think
+  // the pair was fee-free. Max 2 fractional digits is enough granularity
+  // for every bps value we actually use (10 → 0.1%, 30 → 0.3%, 1000 → 10%).
+  const feePct =
+    cfg.feeBps > 0
+      ? `${(cfg.feeBps / 100).toLocaleString("en-US", {
+          maximumFractionDigits: 2,
+        })}%`
+      : "—";
   const feeSideSymbol = cfg.feeSideSymbol ?? "—";
 
   return (

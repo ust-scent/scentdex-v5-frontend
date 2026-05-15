@@ -471,7 +471,11 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
           <Row
             k={t("trade.placeOrder.makerFee").replace(
               "{bps}",
-              (cfg.feeBps / 100).toFixed(0),
+              // Same fix as StatsBar — sub-1% rates (e.g. 30 bps = 0.3%)
+              // were collapsing to "0%" under toFixed(0).
+              (cfg.feeBps / 100).toLocaleString("en-US", {
+                maximumFractionDigits: 2,
+              }),
             )}
             v={`${fmtNum(totals.fee)} ${totals.derivedReceiveSymbol}`}
           />
