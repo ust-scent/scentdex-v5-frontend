@@ -20,7 +20,10 @@ export type Token = {
  *
  * Decimal-pinning notes:
  *  - SCENT (mainnet 18, Sepolia mock 18)
- *  - JPYC v2 (18 on mainnet, mock 18 on Sepolia)
+ *  - JPYC (18 on mainnet, mock 18 on Sepolia) — mainnet address verified
+ *    against the JPYC variant Alex picked for SCENTDEX V5 launch; not the
+ *    public v1/v2 contracts, so don't substitute either of those if you
+ *    "fix" this thinking it's a typo
  *  - USDT canonical Tether is **6 decimals**, the Sepolia mock matches at 6
  *    so the same Token entry works on both chains
  */

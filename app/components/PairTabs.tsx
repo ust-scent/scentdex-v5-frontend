@@ -4,19 +4,6 @@ import { pairsForChain, PAIRS, type Pair } from "@/lib/tokens";
 import { useState } from "react";
 import { useChainId } from "wagmi";
 
-type Stats = { price: string; change: string; positive: boolean };
-
-// Placeholder market data — replaced by on-chain `useFillEvents` numbers
-// once a real fill lands. Keys are canonical pair labels and work on every
-// chain that lists the pair; chains without a listing simply skip the
-// dummy entry because `pairsForChain` filters the pair out.
-const DUMMY_STATS: Record<string, Stats> = {
-  "SCENT/JPYC": { price: "0.0600", change: "+2.84%", positive: true },
-  "SCENT/USDT": { price: "0.000420", change: "-1.21%", positive: false },
-  "SDO/USDT": { price: "0.0010", change: "+5.42%", positive: true },
-  "SDO/SCENT": { price: "2.4500", change: "+0.86%", positive: true },
-};
-
 function pairKey(p: Pair) {
   return `${p.base}/${p.quote}`;
 }
@@ -40,7 +27,6 @@ export function PairTabs({
     >
       {list.map((p) => {
         const k = pairKey(p);
-        const stats = DUMMY_STATS[k];
         const isActive = pairKey(active) === k;
         return (
           <button
@@ -55,18 +41,6 @@ export function PairTabs({
             }`}
           >
             <span className="font-medium">{k}</span>
-            {stats ? (
-              <>
-                <span
-                  className={`font-mono ${isActive ? "text-fg" : "text-fg-dim"}`}
-                >
-                  {stats.price}
-                </span>
-                <span className={stats.positive ? "text-buy" : "text-sell"}>
-                  {stats.change}
-                </span>
-              </>
-            ) : null}
           </button>
         );
       })}

@@ -194,6 +194,7 @@ export function buildAmounts({
   quote,
   size,
   unitPrice,
+  chainId,
 }: {
   side: "buy" | "sell";
   base: Token;
@@ -202,14 +203,15 @@ export function buildAmounts({
   size: string;
   /** Unit price = quote per 1 base, decimal string. */
   unitPrice: string;
+  /** Active chain. Determines which per-chain token address to embed. */
+  chainId: number;
 }): {
   makerToken: Address;
   takerToken: Address;
   makerAmount: bigint;
   takerAmount: bigint;
 } | null {
-  if (!base.addresses[11155111] && !base.addresses[1]) return null;
-  if (!quote.addresses[11155111] && !quote.addresses[1]) return null;
+  if (!base.addresses[chainId] || !quote.addresses[chainId]) return null;
 
   const sizeN = Number(size);
   const priceN = Number(unitPrice);
@@ -229,8 +231,8 @@ export function buildAmounts({
     const takerAmount = safeParse(quoteFloat.toFixed(18), quote.decimals);
     if (makerAmount === null || takerAmount === null) return null;
     return {
-      makerToken: chainAddr(base),
-      takerToken: chainAddr(quote),
+      makerToken: chainAddr(base, chainId),
+      takerToken: chainAddr(quote, chainId),
       makerAmount,
       takerAmount,
     };
@@ -242,8 +244,8 @@ export function buildAmounts({
   const takerAmount = safeParse(baseFloat.toFixed(18), base.decimals);
   if (makerAmount === null || takerAmount === null) return null;
   return {
-    makerToken: chainAddr(quote),
-    takerToken: chainAddr(base),
+    makerToken: chainAddr(quote, chainId),
+    takerToken: chainAddr(base, chainId),
     makerAmount,
     takerAmount,
   };
@@ -258,7 +260,12 @@ function safeParse(value: string, decimals: number): bigint | null {
   }
 }
 
-function chainAddr(token: Token): Address {
-  // Caller is expected to gate via useChainId; this picks whichever address is set.
-  return (token.addresses[11155111] ?? token.addresses[1] ?? ("0x" + "0".repeat(40))) as Address;
+function chainAddr(token: Token, chainId: number): Address {
+  const addr = token.addresses[chainId];
+  if (!addr) {
+    throw new Error(
+      `Token ${token.symbol} has no address on chainId ${chainId}; caller must gate via pairsForChain / addresses[chainId] before calling buildAmounts.`,
+    );
+  }
+  return addr;
 }

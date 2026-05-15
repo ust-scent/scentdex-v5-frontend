@@ -484,7 +484,7 @@ export function FillModal({
             </Note>
           ) : null}
           {!onSupportedChain ? (
-            <Note kind="warn">Switch to Sepolia to fill.</Note>
+            <Note kind="warn">Switch to a supported network to fill.</Note>
           ) : null}
 
           {error ? <Note kind="error">{error}</Note> : null}

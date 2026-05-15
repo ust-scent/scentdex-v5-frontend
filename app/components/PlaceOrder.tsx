@@ -173,6 +173,7 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
       quote: quoteToken,
       size,
       unitPrice,
+      chainId,
     });
     if (!amounts) {
       setLastResult({ ok: false, error: t("trade.placeOrder.couldNotBuild") });
