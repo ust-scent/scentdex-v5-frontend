@@ -220,6 +220,8 @@ export type Dictionary = {
   "trade.placeOrder.approvingErc20": string;
   "trade.placeOrder.orderSigned": string;
   "trade.placeOrder.orderPosted": string;
+  "trade.placeOrder.orderPlacedHeader": string;
+  "trade.placeOrder.orderFailedHeader": string;
 
   // Trade page — RecentTrades
   "trade.recentTrades.title": string;
@@ -553,6 +555,8 @@ const en: Dictionary = {
   "trade.placeOrder.orderSigned": "Order signed. Signature:",
   "trade.placeOrder.orderPosted":
     "Posted to the book. The taker side will see your order within a poll cycle.",
+  "trade.placeOrder.orderPlacedHeader": "Order placed",
+  "trade.placeOrder.orderFailedHeader": "Order failed",
 
   // Trade page — RecentTrades
   "trade.recentTrades.title": "Recent Trades",
@@ -912,9 +916,11 @@ const ja: Dictionary = {
   "trade.placeOrder.approvingStep1": "{symbol} を承認中（1/2）…",
   "trade.placeOrder.approvingStep2": "{symbol} を承認中（2/2）…",
   "trade.placeOrder.approvingErc20": "{symbol} を承認中…",
-  "trade.placeOrder.orderSigned": "注文に署名しました。署名:",
+  "trade.placeOrder.orderSigned": "署名:",
   "trade.placeOrder.orderPosted":
     "板に投稿しました。次のポーリングでテイカー側にも表示されます。",
+  "trade.placeOrder.orderPlacedHeader": "注文を出しました",
+  "trade.placeOrder.orderFailedHeader": "注文に失敗しました",
 
   // Trade page — RecentTrades
   "trade.recentTrades.title": "最近の取引",

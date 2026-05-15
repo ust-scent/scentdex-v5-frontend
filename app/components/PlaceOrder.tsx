@@ -496,19 +496,39 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
 
         {lastResult ? (
           lastResult.ok ? (
-            <div className="px-3 py-2 rounded-md border border-buy/30 bg-buy/[0.05] text-[12px] text-buy">
-              {t("trade.placeOrder.orderSigned")}{" "}
-              <span className="font-mono text-[11px]">
-                {lastResult.signature.slice(0, 10)}…
-                {lastResult.signature.slice(-8)}
-              </span>
-              <div className="text-fg-faint mt-1">
+            <div
+              role="status"
+              aria-live="polite"
+              className="px-4 py-3 rounded-md border-2 border-buy/50 bg-buy/[0.08]"
+            >
+              <div className="flex items-center gap-2 text-buy text-[15px] font-semibold">
+                <span aria-hidden="true">✓</span>
+                <span>{t("trade.placeOrder.orderPlacedHeader")}</span>
+              </div>
+              <div className="text-[12px] text-fg-dim mt-2 leading-relaxed">
                 {t("trade.placeOrder.orderPosted")}
+              </div>
+              <div className="text-[11px] text-fg-faint mt-1">
+                {t("trade.placeOrder.orderSigned")}{" "}
+                <span className="font-mono">
+                  {lastResult.signature.slice(0, 10)}…
+                  {lastResult.signature.slice(-8)}
+                </span>
               </div>
             </div>
           ) : (
-            <div className="px-3 py-2 rounded-md border border-sell/30 bg-sell/[0.05] text-[12px] text-sell">
-              {lastResult.error}
+            <div
+              role="alert"
+              aria-live="assertive"
+              className="px-4 py-3 rounded-md border-2 border-sell/50 bg-sell/[0.08]"
+            >
+              <div className="flex items-center gap-2 text-sell text-[15px] font-semibold">
+                <span aria-hidden="true">✗</span>
+                <span>{t("trade.placeOrder.orderFailedHeader")}</span>
+              </div>
+              <div className="text-[12px] text-fg-dim mt-2 leading-relaxed break-words">
+                {lastResult.error}
+              </div>
             </div>
           )
         ) : null}
