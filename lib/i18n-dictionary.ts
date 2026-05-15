@@ -305,6 +305,32 @@ export type Dictionary = {
   "trade.fillError.insufficientFunds": string;
   "trade.fillError.networkError": string;
   "trade.fillError.closeAndRetry": string;
+
+  // FillModal layout / status / buttons / footer
+  "trade.fillModal.title": string;
+  "trade.fillModal.pair": string;
+  "trade.fillModal.maker": string;
+  "trade.fillModal.price": string;
+  "trade.fillModal.youReceive": string;
+  "trade.fillModal.youPay": string;
+  "trade.fillModal.orderStatus": string;
+  "trade.fillModal.cantFillOwn": string;
+  "trade.fillModal.missingPermit": string;
+  "trade.fillModal.switchNetwork": string;
+  "trade.fillModal.settled": string;
+  "trade.fillModal.button.filled": string;
+  "trade.fillModal.button.approving": string;
+  "trade.fillModal.button.signPermit": string;
+  "trade.fillModal.button.waitingWallet": string;
+  "trade.fillModal.button.confirmingTx": string;
+  "trade.fillModal.button.approve": string;
+  "trade.fillModal.button.fill": string;
+  "trade.fillModal.footnote": string;
+  "trade.fillModal.statusOpen": string;
+  "trade.fillModal.statusPartiallyFilled": string;
+  "trade.fillModal.statusFilled": string;
+  "trade.fillModal.statusCancelled": string;
+  "trade.fillModal.statusExpired": string;
 };
 
 const en: Dictionary = {
@@ -667,6 +693,33 @@ const en: Dictionary = {
   "trade.fillError.networkError":
     "Network error while reaching the chain. Please retry.",
   "trade.fillError.closeAndRetry": "Close and try again",
+
+  "trade.fillModal.title": "Fill order",
+  "trade.fillModal.pair": "Pair",
+  "trade.fillModal.maker": "Maker",
+  "trade.fillModal.price": "Price",
+  "trade.fillModal.youReceive": "You receive",
+  "trade.fillModal.youPay": "You pay",
+  "trade.fillModal.orderStatus": "Order status",
+  "trade.fillModal.cantFillOwn": "You can't fill your own order. Use Cancel instead.",
+  "trade.fillModal.missingPermit":
+    "This order is missing the per-order Permit2 signature (legacy). The maker needs to re-post it.",
+  "trade.fillModal.switchNetwork": "Switch to a supported network to fill.",
+  "trade.fillModal.settled": "Filled — settlement confirmed on-chain.",
+  "trade.fillModal.button.filled": "Filled",
+  "trade.fillModal.button.approving": "Approving {symbol}…",
+  "trade.fillModal.button.signPermit": "Sign Permit2…",
+  "trade.fillModal.button.waitingWallet": "Waiting for wallet…",
+  "trade.fillModal.button.confirmingTx": "Confirming on-chain…",
+  "trade.fillModal.button.approve": "Approve {symbol}",
+  "trade.fillModal.button.fill": "Fill — pay {amount} {symbol}",
+  "trade.fillModal.footnote":
+    "Two wallet popups: one Permit2 signature (off-chain, no gas) + one on-chain fillOrder transaction. Plus a one-time ERC-20 → Permit2 approval if you haven't done it before.",
+  "trade.fillModal.statusOpen": "open",
+  "trade.fillModal.statusPartiallyFilled": "partially filled",
+  "trade.fillModal.statusFilled": "filled",
+  "trade.fillModal.statusCancelled": "cancelled",
+  "trade.fillModal.statusExpired": "expired",
 };
 
 const ja: Dictionary = {
@@ -1032,6 +1085,33 @@ const ja: Dictionary = {
   "trade.fillError.networkError":
     "ネットワーク接続エラーが発生しました。もう一度お試しください。",
   "trade.fillError.closeAndRetry": "閉じてやり直す",
+
+  "trade.fillModal.title": "注文を約定する",
+  "trade.fillModal.pair": "ペア",
+  "trade.fillModal.maker": "メイカー",
+  "trade.fillModal.price": "価格",
+  "trade.fillModal.youReceive": "受取",
+  "trade.fillModal.youPay": "支払",
+  "trade.fillModal.orderStatus": "注文ステータス",
+  "trade.fillModal.cantFillOwn": "自分の注文は約定できません。代わりにキャンセルしてください。",
+  "trade.fillModal.missingPermit":
+    "この注文には注文単位の Permit2 署名がありません（旧形式）。メイカーが再投稿する必要があります。",
+  "trade.fillModal.switchNetwork": "対応ネットワークに切り替えて約定してください。",
+  "trade.fillModal.settled": "約定済み — オンチェーンで確定しました。",
+  "trade.fillModal.button.filled": "約定済み",
+  "trade.fillModal.button.approving": "{symbol} を承認中…",
+  "trade.fillModal.button.signPermit": "Permit2 に署名…",
+  "trade.fillModal.button.waitingWallet": "ウォレット応答待ち…",
+  "trade.fillModal.button.confirmingTx": "オンチェーン確認中…",
+  "trade.fillModal.button.approve": "{symbol} を承認",
+  "trade.fillModal.button.fill": "約定 — {amount} {symbol} を支払う",
+  "trade.fillModal.footnote":
+    "ウォレットのポップアップは 2 回：Permit2 署名（オフチェーン・ガス不要）と、オンチェーンの fillOrder トランザクション。初回のみ、ERC-20 → Permit2 の承認も追加で必要です。",
+  "trade.fillModal.statusOpen": "オープン",
+  "trade.fillModal.statusPartiallyFilled": "一部約定",
+  "trade.fillModal.statusFilled": "約定済み",
+  "trade.fillModal.statusCancelled": "キャンセル済み",
+  "trade.fillModal.statusExpired": "期限切れ",
 };
 
 // Stub other locales by reusing English. Full translations land in subsequent passes.

@@ -365,22 +365,25 @@ export function FillModal({
   }
 
   const buttonLabel = (() => {
-    if (isAlreadyDone) return "Filled";
+    if (isAlreadyDone) return t("trade.fillModal.button.filled");
     // Once we've shown an error banner, the same click would just re-fail.
     // Steer the user to close + reopen (which will refetch the order's
     // current status and rebuild a fresh permit) instead of letting them
     // re-press into the same wall.
     if (phase === "error") return t("trade.fillError.closeAndRetry");
     if (phase === "approving-erc20" || takerStatus.isApproving)
-      return `Approving ${youPaySym}…`;
+      return t("trade.fillModal.button.approving").replace("{symbol}", youPaySym);
     if (phase === "awaiting-permit-sig" || signing)
-      return "Sign Permit2…";
+      return t("trade.fillModal.button.signPermit");
     if (phase === "submitting-tx" || writeTx.isPending)
-      return "Waiting for wallet…";
+      return t("trade.fillModal.button.waitingWallet");
     if (phase === "confirming-tx" || writeReceipt.isLoading)
-      return "Confirming on-chain…";
-    if (needsErc20Approval) return `Approve ${youPaySym}`;
-    return `Fill — pay ${youPay} ${youPaySym}`;
+      return t("trade.fillModal.button.confirmingTx");
+    if (needsErc20Approval)
+      return t("trade.fillModal.button.approve").replace("{symbol}", youPaySym);
+    return t("trade.fillModal.button.fill")
+      .replace("{amount}", youPay)
+      .replace("{symbol}", youPaySym);
   })();
 
   // In `error` we repurpose the primary CTA into a "close & retry" action.
@@ -417,7 +420,7 @@ export function FillModal({
       <div className="w-full md:max-w-[480px] bg-bg-soft border border-line rounded-t-2xl md:rounded-2xl overflow-hidden">
         <header className="flex items-center justify-between px-5 py-4 border-b border-line">
           <h2 className="text-[14px] font-medium uppercase tracking-[0.14em]">
-            Fill order
+            {t("trade.fillModal.title")}
           </h2>
           <button
             onClick={onClose}
@@ -429,9 +432,9 @@ export function FillModal({
         </header>
 
         <div className="p-5 space-y-4 text-[13px]">
-          <Row label="Pair" value={order.pair} />
+          <Row label={t("trade.fillModal.pair")} value={order.pair} />
           <Row
-            label="Maker"
+            label={t("trade.fillModal.maker")}
             value={
               <span className="font-mono">
                 {order.order.maker.slice(0, 6)}…{order.order.maker.slice(-4)}
@@ -439,7 +442,7 @@ export function FillModal({
             }
           />
           <Row
-            label="Price"
+            label={t("trade.fillModal.price")}
             value={
               <span className="font-mono tnum">
                 {priceNumber.toLocaleString("en-US", { maximumFractionDigits: 6 })}{" "}
@@ -448,7 +451,7 @@ export function FillModal({
             }
           />
           <Row
-            label="You receive"
+            label={t("trade.fillModal.youReceive")}
             value={
               <span className="font-mono tnum text-buy">
                 {youReceive} {youReceiveSym}
@@ -457,7 +460,7 @@ export function FillModal({
             emphasis
           />
           <Row
-            label="You pay"
+            label={t("trade.fillModal.youPay")}
             value={
               <span className="font-mono tnum text-sell">
                 {youPay} {youPaySym}
@@ -466,30 +469,27 @@ export function FillModal({
             emphasis
           />
           <Row
-            label="Order status"
+            label={t("trade.fillModal.orderStatus")}
             value={
               <span className="font-mono text-[12px] px-2 py-0.5 rounded bg-white/[0.05]">
-                {order.status}
+                {translateOrderStatus(t, order.status)}
               </span>
             }
           />
 
           {!notSelf ? (
-            <Note kind="warn">You can't fill your own order. Use Cancel instead.</Note>
+            <Note kind="warn">{t("trade.fillModal.cantFillOwn")}</Note>
           ) : null}
           {!hasMakerPermit ? (
-            <Note kind="warn">
-              This order is missing the per-order Permit2 signature (legacy).
-              The maker needs to re-post it.
-            </Note>
+            <Note kind="warn">{t("trade.fillModal.missingPermit")}</Note>
           ) : null}
           {!onSupportedChain ? (
-            <Note kind="warn">Switch to a supported network to fill.</Note>
+            <Note kind="warn">{t("trade.fillModal.switchNetwork")}</Note>
           ) : null}
 
           {error ? <Note kind="error">{error}</Note> : null}
           {phase === "done" ? (
-            <Note kind="success">Filled — settlement confirmed on-chain.</Note>
+            <Note kind="success">{t("trade.fillModal.settled")}</Note>
           ) : null}
 
           <button
@@ -501,14 +501,32 @@ export function FillModal({
           </button>
 
           <p className="text-[11px] text-fg-faint leading-relaxed">
-            Two wallet popups: one Permit2 signature (off-chain, no gas) + one
-            on-chain fillOrder transaction. Plus a one-time ERC-20 → Permit2
-            approval if you haven't done it before.
+            {t("trade.fillModal.footnote")}
           </p>
         </div>
       </div>
     </div>
   );
+}
+
+function translateOrderStatus(
+  t: ReturnType<typeof useTranslator>,
+  status: FillOrder["status"],
+): string {
+  switch (status) {
+    case "open":
+      return t("trade.fillModal.statusOpen");
+    case "partially-filled":
+      return t("trade.fillModal.statusPartiallyFilled");
+    case "filled":
+      return t("trade.fillModal.statusFilled");
+    case "cancelled":
+      return t("trade.fillModal.statusCancelled");
+    case "expired":
+      return t("trade.fillModal.statusExpired");
+    default:
+      return status;
+  }
 }
 
 function Row({
