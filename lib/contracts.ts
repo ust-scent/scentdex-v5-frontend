@@ -3,17 +3,14 @@ import type { Address } from "viem";
 /**
  * SCENTDEX V5 contract addresses per chain.
  *
- * Mainnet (1):       intentionally undefined until the 72h-timelock rebuild
- *                    is deployed. The 1-min-timelock prod-test build at
- *                    0x3293462B4Ef0dbC20817562d295a368556689249 exists but
- *                    we don't expose it to wallets — a 60s admin guard is
- *                    effectively no guard, and dex.scenttoken.com is
- *                    public. Re-enable here once the long-timelock contract
- *                    is verified and pair configs are seeded.
+ * Mainnet (1):       prod-test build with a 60s admin timelock. Owner key is
+ *                    still the .env hot wallet, so this is a controlled
+ *                    testing phase, not a hardened launch. Long-timelock
+ *                    rebuild + Safe multisig owner are tracked separately.
  * Sepolia (11155111): UAT environment for tester walkthroughs.
  */
 export const SCENTDEX_V5_ADDRESS: Record<number, Address | undefined> = {
-  1: undefined,
+  1: "0x3293462B4Ef0dbC20817562d295a368556689249",
   11155111: "0x42349e93B90c69536Ab8a2cc5C55b3cd14872395",
 };
 
