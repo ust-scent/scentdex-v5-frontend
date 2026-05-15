@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { type Address, type Hex, formatUnits } from "viem";
 import {
   useAccount,
@@ -12,7 +12,9 @@ import {
 
 import { SCENTDEX_V5_ABI } from "@/lib/abi";
 import { SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
+import { useTranslator } from "@/lib/locale-context";
 import { useTokenStatus } from "@/lib/hooks/useTokenStatus";
+import { parseFillError } from "@/lib/parse-fill-error";
 import {
   buildPermit2Domain,
   EMPTY_PERMIT_SIGNATURE,
@@ -24,6 +26,9 @@ import {
   type SerialisedPermitSingle,
 } from "@/lib/permit2";
 import { TOKENS, type Token } from "@/lib/tokens";
+
+/** ms before "Confirming on chain…" gets a "tx is taking too long" warning. */
+const CONFIRM_TIMEOUT_MS = 90_000;
 
 /**
  * Fill modal — opens when a taker clicks a row in the order book.
@@ -121,6 +126,7 @@ export function FillModal({
     } as unknown as Token,
   );
 
+  const t = useTranslator();
   const { signTypedDataAsync, isPending: signing } = useSignTypedData();
   const writeTx = useWriteContract();
   const writeReceipt = useWaitForTransactionReceipt({
@@ -130,13 +136,59 @@ export function FillModal({
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Reset transient state every time we (re)open with a different order.
   useEffect(() => {
     if (!open) return;
     setPhase("idle");
     setError(null);
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
   }, [open, order?.orderHash]);
+
+  // Catch wallet-side submit errors. wagmi's useWriteContract surfaces
+  // them on `writeTx.error` rather than on `writeReceipt.isError` —
+  // anything thrown before the tx makes it to a block (user reject, RPC
+  // unavailable, gas estimation revert, …) lives here.
+  useEffect(() => {
+    if (!writeTx.error) return;
+    setPhase("error");
+    setError(parseFillError(writeTx.error, t));
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [writeTx.error]);
+
+  // Arm a watchdog the moment a tx hash exists. If the receipt never
+  // resolves (mempool starvation, frontrun in a race fill, taker mining
+  // pool issues, …) the user gets an explicit "check your wallet" hint
+  // instead of an infinite "Confirming on-chain…" spinner.
+  useEffect(() => {
+    if (!writeTx.data) return;
+    if (writeReceipt.isSuccess || writeReceipt.isError) return;
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    timeoutRef.current = setTimeout(() => {
+      // Only act if the receipt is still pending.
+      if (!writeReceipt.isSuccess && !writeReceipt.isError) {
+        setError(t("trade.fillError.timeout"));
+        // Don't transition out of confirming-tx — the receipt may still
+        // land. Surfacing the warning as `error` is enough to break the
+        // visual silence.
+      }
+    }, CONFIRM_TIMEOUT_MS);
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [writeTx.data, writeReceipt.isSuccess, writeReceipt.isError]);
 
   // Watch the on-chain receipt and transition state.
   useEffect(() => {
@@ -183,9 +235,11 @@ export function FillModal({
     }
     if (writeReceipt.isError) {
       setPhase("error");
-      setError(
-        writeReceipt.error?.message?.slice(0, 200) ?? "transaction reverted",
-      );
+      setError(parseFillError(writeReceipt.error, t));
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [writeReceipt.isSuccess, writeReceipt.isError, writeReceipt.isLoading]);
@@ -261,11 +315,7 @@ export function FillModal({
       } as Parameters<typeof signTypedDataAsync>[0])) as Hex;
     } catch (e) {
       setPhase("error");
-      setError(
-        `taker permit2 sign cancelled: ${
-          e instanceof Error ? e.message.slice(0, 140) : String(e)
-        }`,
-      );
+      setError(parseFillError(e, t));
       return;
     }
 
@@ -319,11 +369,7 @@ export function FillModal({
       });
     } catch (e) {
       setPhase("error");
-      setError(
-        `fillOrder send failed: ${
-          e instanceof Error ? e.message.slice(0, 200) : String(e)
-        }`,
-      );
+      setError(parseFillError(e, t));
     }
   }
 

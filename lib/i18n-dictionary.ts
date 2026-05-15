@@ -273,6 +273,32 @@ export type Dictionary = {
   "trade.statsBar.low24h": string;
   "trade.statsBar.makerFee": string;
   "trade.statsBar.makerFeeSuffix": string;
+
+  // Trade page — FillModal error messages (V5 custom error mapping)
+  "trade.fillError.title": string;
+  "trade.fillError.walletRejected": string;
+  "trade.fillError.timeout": string;
+  "trade.fillError.alreadyFilled": string;
+  "trade.fillError.cancelled": string;
+  "trade.fillError.allCancelled": string;
+  "trade.fillError.expired": string;
+  "trade.fillError.invalidNonce": string;
+  "trade.fillError.invalidSignature": string;
+  "trade.fillError.takerBelowFloor": string;
+  "trade.fillError.priceRatio": string;
+  "trade.fillError.permit2TokenMismatch": string;
+  "trade.fillError.permit2SpenderMismatch": string;
+  "trade.fillError.permit2AmountInsufficient": string;
+  "trade.fillError.blacklisted": string;
+  "trade.fillError.tokenNotAllowed": string;
+  "trade.fillError.pairNotEnabled": string;
+  "trade.fillError.zeroFill": string;
+  "trade.fillError.zeroResidual": string;
+  "trade.fillError.feeSideMismatch": string;
+  "trade.fillError.feeBpsMismatch": string;
+  "trade.fillError.revertedWith": string;
+  "trade.fillError.reverted": string;
+  "trade.fillError.unknown": string;
 };
 
 const en: Dictionary = {
@@ -584,6 +610,48 @@ const en: Dictionary = {
   "trade.statsBar.low24h": "24H Low",
   "trade.statsBar.makerFee": "Maker Fee",
   "trade.statsBar.makerFeeSuffix": "paid in {feeSide} (sell side)",
+
+  // FillModal error messages
+  "trade.fillError.title": "Fill failed",
+  "trade.fillError.walletRejected": "You declined the request in your wallet.",
+  "trade.fillError.timeout":
+    "Transaction is taking longer than expected. Check your wallet for a pending request.",
+  "trade.fillError.alreadyFilled":
+    "This order has already been filled by someone else.",
+  "trade.fillError.cancelled": "The maker cancelled this order before your fill landed.",
+  "trade.fillError.allCancelled":
+    "All orders have been globally cancelled by the maker.",
+  "trade.fillError.expired": "This order has expired.",
+  "trade.fillError.invalidNonce":
+    "Permit2 nonce is out of sync. Try re-signing the order or the fill.",
+  "trade.fillError.invalidSignature":
+    "Maker signature on this order is no longer valid.",
+  "trade.fillError.takerBelowFloor":
+    "Fill amount is below the minimum for this token.",
+  "trade.fillError.priceRatio":
+    "Order price ratio is outside the protocol cap.",
+  "trade.fillError.permit2TokenMismatch":
+    "Permit2 token does not match the order's token.",
+  "trade.fillError.permit2SpenderMismatch":
+    "Permit2 spender does not match the DEX.",
+  "trade.fillError.permit2AmountInsufficient":
+    "Permit2 allowance is insufficient for this fill.",
+  "trade.fillError.blacklisted":
+    "One of the parties is blacklisted on this DEX.",
+  "trade.fillError.tokenNotAllowed":
+    "One of the tokens is not allowed on this DEX anymore.",
+  "trade.fillError.pairNotEnabled":
+    "This trading pair has been disabled.",
+  "trade.fillError.zeroFill": "Fill amount cannot be zero.",
+  "trade.fillError.zeroResidual":
+    "Order has no fillable amount left after rounding.",
+  "trade.fillError.feeSideMismatch":
+    "Order's fee side no longer matches the pair config.",
+  "trade.fillError.feeBpsMismatch":
+    "Order's fee rate no longer matches the pair config.",
+  "trade.fillError.revertedWith": "Reverted with",
+  "trade.fillError.reverted": "Transaction reverted on chain.",
+  "trade.fillError.unknown": "Fill failed for an unknown reason.",
 };
 
 const ja: Dictionary = {
@@ -897,6 +965,49 @@ const ja: Dictionary = {
   "trade.statsBar.low24h": "24H 安値",
   "trade.statsBar.makerFee": "メイカー手数料",
   "trade.statsBar.makerFeeSuffix": "{feeSide} 建て（売り側）",
+
+  // FillModal error messages
+  "trade.fillError.title": "約定に失敗しました",
+  "trade.fillError.walletRejected": "ウォレットで取引を拒否しました。",
+  "trade.fillError.timeout":
+    "取引の確認に時間がかかっています。ウォレットの保留中リクエストを確認してください。",
+  "trade.fillError.alreadyFilled":
+    "この注文は別の利用者によって既に約定済みです。",
+  "trade.fillError.cancelled":
+    "あなたの約定が反映される前に、メイカーがこの注文をキャンセルしました。",
+  "trade.fillError.allCancelled":
+    "メイカーによってすべての注文が一括キャンセルされています。",
+  "trade.fillError.expired": "この注文は有効期限が切れています。",
+  "trade.fillError.invalidNonce":
+    "Permit2 のnonceが不整合です。注文または約定を再署名してください。",
+  "trade.fillError.invalidSignature":
+    "メイカー署名が無効です。",
+  "trade.fillError.takerBelowFloor":
+    "約定数量がこのトークンの最小値を下回っています。",
+  "trade.fillError.priceRatio":
+    "注文の価格比がプロトコル上限を超えています。",
+  "trade.fillError.permit2TokenMismatch":
+    "Permit2 のトークンが注文のトークンと一致しません。",
+  "trade.fillError.permit2SpenderMismatch":
+    "Permit2 の spender が DEX と一致しません。",
+  "trade.fillError.permit2AmountInsufficient":
+    "Permit2 で承認された数量がこの約定に対して不足しています。",
+  "trade.fillError.blacklisted":
+    "関係者のいずれかが DEX でブラックリスト登録されています。",
+  "trade.fillError.tokenNotAllowed":
+    "対象トークンが DEX で取引許可されていません。",
+  "trade.fillError.pairNotEnabled":
+    "この取引ペアは現在無効化されています。",
+  "trade.fillError.zeroFill": "約定数量がゼロです。",
+  "trade.fillError.zeroResidual":
+    "丸め誤差により約定可能な残量がありません。",
+  "trade.fillError.feeSideMismatch":
+    "注文の手数料サイドが現在のペア設定と一致しません。",
+  "trade.fillError.feeBpsMismatch":
+    "注文の手数料率が現在のペア設定と一致しません。",
+  "trade.fillError.revertedWith": "コントラクト revert",
+  "trade.fillError.reverted": "オンチェーン取引が失敗しました。",
+  "trade.fillError.unknown": "不明な理由で約定に失敗しました。",
 };
 
 // Stub other locales by reusing English. Full translations land in subsequent passes.
