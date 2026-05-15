@@ -500,7 +500,7 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
               .replace("{feeSide}", cfg.feeSide === pair.base ? pair.base : pair.quote)
               // {quote} = the currency the taker actually receives (i.e. the
               // maker's makerToken in this fill). For a sell-side maker order
-              // this is pair.quote; for a buy-side maker order this is pair.base.
+              // this is pair.base; for a buy-side maker order this is pair.quote.
               .replace("{quote}", side === "sell" ? pair.base : pair.quote)
               // {makerToken} = the token the maker pays out (= maker's makerToken).
               .replace("{makerToken}", side === "sell" ? pair.base : pair.quote)

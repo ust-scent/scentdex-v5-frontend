@@ -165,7 +165,7 @@ export function FillModal({
     query: { enabled: Boolean(dexAddress && previewArgs) },
   });
 
-const writeReceipt = useWaitForTransactionReceipt({
+  const writeReceipt = useWaitForTransactionReceipt({
     hash: writeTx.data,
     query: { enabled: Boolean(writeTx.data) },
   });
@@ -297,10 +297,18 @@ const writeReceipt = useWaitForTransactionReceipt({
   //         reduced by feeAmount. Surface gross / fee / net to keep the
   //         taker's expectations aligned with what actually lands in their
   //         wallet.
-  const previewFee = previewQuery.data ?? [0n, "0x0000000000000000000000000000000000000000" as Address];
-  const feeAmount = previewFee[0];
-  const feeToken = previewFee[1];
+  //
+  // While previewQuery is loading or errored we deliberately do NOT render
+  // the legacy "You receive: <gross>" row — it would understate the fee in
+  // a Case B fill. Fill is also disabled in those states (see buttonDisabled
+  // below) so the taker can't act on a stale disclosure.
+  const previewReady = previewQuery.isSuccess && previewQuery.data !== undefined;
+  const previewFee = previewQuery.data;
+  const feeAmount = previewFee?.[0] ?? 0n;
+  const feeToken =
+    previewFee?.[1] ?? ("0x0000000000000000000000000000000000000000" as Address);
   const feeAppliesToTakerReceive =
+    previewReady &&
     feeAmount > 0n &&
     feeToken.toLowerCase() === order.order.makerToken.toLowerCase();
   const netReceive = feeAppliesToTakerReceive
@@ -461,12 +469,20 @@ const writeReceipt = useWaitForTransactionReceipt({
         }
       : onFillClick;
 
+  // Hold Fill until previewFee resolves: ADR-0007 makes previewFee the
+  // authoritative on-chain fee-disclosure source, and the modal's
+  // gross / fee / net rows depend on it. Letting the taker fill while the
+  // call is in flight (or errored) would silently revert them to the legacy
+  // single-row disclosure and they'd receive `gross − fee` without warning.
+  const previewBlocking =
+    onSupportedChain && (previewQuery.isLoading || previewQuery.isError);
   const buttonDisabled =
     isAlreadyDone ||
     !account ||
     !onSupportedChain ||
     !notSelf ||
     !hasMakerPermit ||
+    previewBlocking ||
     phase === "awaiting-permit-sig" ||
     phase === "submitting-tx" ||
     phase === "confirming-tx" ||
@@ -578,6 +594,9 @@ const writeReceipt = useWaitForTransactionReceipt({
           ) : null}
           {!onSupportedChain ? (
             <Note kind="warn">{t("trade.fillModal.switchNetwork")}</Note>
+          ) : null}
+          {onSupportedChain && previewQuery.isError ? (
+            <Note kind="error">{t("trade.fillModal.previewFeeError")}</Note>
           ) : null}
 
           {error ? <Note kind="error">{error}</Note> : null}

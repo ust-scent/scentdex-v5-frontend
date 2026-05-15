@@ -18,14 +18,16 @@ import type { Address } from "viem";
  *                    Legacy V5 (`0x3293462B4Ef0dbC20817562d295a368556689249`)
  *                    is still alive on mainnet but no longer routed to by
  *                    this frontend.
- * Sepolia (11155111): V5 r6 UAT environment. No V6 Sepolia deploy — Alex
- *                    elected mainnet-direct cutover. Sepolia is effectively
- *                    out-of-rotation; left wired for one-off regression
- *                    checks if a tester switches networks manually.
+ *
+ * Sepolia retired with the V6 cutover — no V6 Sepolia deploy. Dropping it
+ * from the map makes the frontend treat Sepolia as wrong-network so the
+ * existing UI gates fire instead of (a) letting makers sign EIP-712 orders
+ * against domain version "7" that V5 r6 Sepolia can't verify, and (b)
+ * letting FillModal hammer `previewFee` against a V5 contract that has no
+ * such selector.
  */
 export const SCENTDEX_V5_ADDRESS: Record<number, Address | undefined> = {
   1: "0x9962584c755f943f2c29dF190dA97008db216D16",
-  11155111: "0x42349e93B90c69536Ab8a2cc5C55b3cd14872395",
 };
 
 /**
@@ -41,10 +43,8 @@ export const PERMIT2_ADDRESS: Address =
 
 /**
  * EIP-712 domain version. V5 r6 used "6"; V6 r1+ bumped to "7"
- * (ADR-0007 sym_fee_004). Sepolia is still on V5 r6 / "6" but the frontend's
- * primary path targets mainnet, so we pin to V6's "7" globally. Sepolia
- * orders signed with this domain will not verify against the V5 Sepolia
- * contract — that's acceptable because Sepolia is out-of-rotation.
+ * (ADR-0007 sym_fee_004). Sepolia (V5 r6 / "6") is no longer in the address
+ * map post-cutover, so a single global "7" is sufficient.
  */
 export const DOMAIN_VERSION = "7";
 

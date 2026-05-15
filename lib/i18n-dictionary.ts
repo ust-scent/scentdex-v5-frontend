@@ -336,6 +336,7 @@ export type Dictionary = {
   "trade.fillModal.statusCancelled": string;
   "trade.fillModal.statusExpired": string;
   "trade.fillModal.walletPopupHint": string;
+  "trade.fillModal.previewFeeError": string;
 };
 
 const en: Dictionary = {
@@ -732,6 +733,8 @@ const en: Dictionary = {
   "trade.fillModal.statusExpired": "expired",
   "trade.fillModal.walletPopupHint":
     "Check your wallet popup and approve / sign the request to continue.",
+  "trade.fillModal.previewFeeError":
+    "Couldn't read the on-chain fee preview for this order. Filling is disabled until it resolves — close and retry, or check your network.",
 };
 
 const ja: Dictionary = {
@@ -1131,6 +1134,8 @@ const ja: Dictionary = {
   "trade.fillModal.statusExpired": "期限切れ",
   "trade.fillModal.walletPopupHint":
     "ウォレットのポップアップを確認して、承認または署名のボタンを押してください。",
+  "trade.fillModal.previewFeeError":
+    "この注文のオンチェーン手数料プレビューを取得できませんでした。解決するまで約定はできません — 一度閉じて再試行するか、ネットワークを確認してください。",
 };
 
 // Stub other locales by reusing English. Full translations land in subsequent passes.
