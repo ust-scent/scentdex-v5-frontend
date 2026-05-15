@@ -26,7 +26,15 @@ import { useFillEvents } from "@/lib/hooks/useFillEvents";
 import { TOKENS, feeConfig, type Pair, type Token } from "@/lib/tokens";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatUnits, type Hex } from "viem";
-import { useAccount, useChainId, useSignTypedData } from "wagmi";
+import {
+  useAccount,
+  useChainId,
+  usePublicClient,
+  useSignTypedData,
+} from "wagmi";
+
+import { PERMIT2_ABI } from "@/lib/abi";
+import { PERMIT2_ADDRESS } from "@/lib/contracts";
 
 type Side = "buy" | "sell";
 type ExpiryChoice = "1d" | "1w" | "1mo" | "1y";
@@ -50,6 +58,14 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
   const { address: account, isConnected } = useAccount();
   const chainId = useChainId();
   const dexAddress = SCENTDEX_V5_ADDRESS[chainId];
+  // Direct viem client. Needed to read Permit2.allowance(maker, makerToken,
+  // DEX).nonce SYNCHRONOUSLY at sign time so we never embed a stale nonce
+  // into PermitSingle. The wagmi useReadContract path is cache-driven and
+  // gives the value as of the last mount/refetch, which means once the
+  // maker has filled any prior order on the same token the cached "0"
+  // mismatches the on-chain "1" and AllowanceTransfer.permit reverts
+  // InvalidNonce at fill time.
+  const publicClient = usePublicClient({ chainId });
 
   const baseToken = TOKENS.find((t) => t.symbol === pair.base)!;
   const quoteToken = TOKENS.find((t) => t.symbol === pair.quote)!;
@@ -244,11 +260,43 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
     // pattern and preserves the per-order security gain.
 
     try {
+      // Read Permit2 allowance.nonce DIRECTLY from RPC (no wagmi cache).
+      // The on-chain nonce increments every time _fillOrder calls
+      // permit2.permit(maker, ...), so any cached value goes stale the
+      // instant one of this maker's prior orders on this token fills.
+      // Embedding the stale value reverts AllowanceTransfer.permit at
+      // fill time and burns the taker's gas.
+      let permit2Nonce = makerStatus.permit2DexNonce;
+      if (publicClient && account) {
+        try {
+          const allowance = (await publicClient.readContract({
+            address: PERMIT2_ADDRESS,
+            abi: PERMIT2_ABI,
+            functionName: "allowance",
+            args: [account, pendingOrder.makerToken, dexAddress],
+          })) as readonly [bigint, number, number];
+          permit2Nonce = Number(allowance[2]);
+          // Keep the hook's view in sync so the UI Permit2 tab does not
+          // lag behind reality.
+          if (permit2Nonce !== makerStatus.permit2DexNonce) {
+            void makerStatus.refetchPermit2Nonce();
+          }
+        } catch (e) {
+          setLastResult({
+            ok: false,
+            error: `Could not read Permit2 nonce: ${
+              e instanceof Error ? e.message.slice(0, 120) : String(e).slice(0, 120)
+            }`,
+          });
+          return;
+        }
+      }
+
       // Pre-build the Permit2 PermitSingle so we can fire its sign
       // request the moment the Order signature returns — no hash work
       // happens between the two popups.
       const permitSingle: PermitSingle = buildOrderPermit({
-        ownerNonce: makerStatus.permit2DexNonce,
+        ownerNonce: permit2Nonce,
         makerToken: pendingOrder.makerToken,
         makerAmount: pendingOrder.makerAmount,
         expiry: pendingOrder.expiry,
