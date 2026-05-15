@@ -657,6 +657,10 @@ function History({ orders, loading }: { orders: ApiOrder[]; loading: boolean }) 
 
 function Permit2() {
   const t = useTranslator();
+  const chainId = useChainId();
+  // SDO has no mainnet listing; render only the tokens that actually exist on
+  // the active chain so users don't see a stale "not deployed" card.
+  const tokensOnChain = TOKENS.filter((token) => Boolean(token.addresses[chainId]));
 
   return (
     <div className="p-4">
@@ -671,7 +675,7 @@ function Permit2() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        {TOKENS.map((token) => (
+        {tokensOnChain.map((token) => (
           <Permit2Card key={token.symbol} token={token} />
         ))}
       </div>
