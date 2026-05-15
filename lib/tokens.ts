@@ -107,8 +107,9 @@ export function pairsForChain(chainId: number): Pair[] {
  * the on-chain read returns. They MUST match what `executeSetPair` was
  * called with, otherwise the maker form previews the wrong fee.
  *
- * Note the spread: Sepolia keeps the 10% / 20% test rates that the mock
- * deploy script applied; mainnet runs at the 0.3% launch rate.
+ * Both mainnet and Sepolia run SCENT pairs at the 10% maker rate
+ * (1000 bps on the SCENT side). SDO pairs on Sepolia are 20% as a
+ * test/UAT rate.
  */
 export type PairFeeConfig = {
   /** Basis points charged on the fee side. 30 = 0.3%, 1000 = 10%. */
@@ -119,8 +120,8 @@ export type PairFeeConfig = {
 
 export const PAIR_CONFIG: Record<number, Record<string, PairFeeConfig>> = {
   1: {
-    "SCENT/JPYC": { feeBps: 30, feeSide: "SCENT" },
-    "SCENT/USDT": { feeBps: 30, feeSide: "SCENT" },
+    "SCENT/JPYC": { feeBps: 1000, feeSide: "SCENT" },
+    "SCENT/USDT": { feeBps: 1000, feeSide: "SCENT" },
   },
   11155111: {
     "SCENT/JPYC": { feeBps: 1000, feeSide: "SCENT" },

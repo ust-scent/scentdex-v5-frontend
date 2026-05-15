@@ -43,7 +43,6 @@ export function StatsBar({ pair }: { pair: Pair }) {
           maximumFractionDigits: 2,
         })}%`
       : "—";
-  const feeSideSymbol = cfg.feeSideSymbol ?? "—";
 
   return (
     <div className="px-3 sm:px-6 py-4 sm:py-5 border-b border-line">
@@ -78,7 +77,7 @@ export function StatsBar({ pair }: { pair: Pair }) {
             <div>
               <div className="text-fg">{feePct}</div>
               <div className="text-[11px] text-fg-faint mt-0.5">
-                {t("trade.statsBar.makerFeeSuffix").replace("{feeSide}", feeSideSymbol)}
+                {t("trade.statsBar.makerFeeSuffix")}
               </div>
             </div>
           }

@@ -613,7 +613,7 @@ const en: Dictionary = {
   "trade.statsBar.high24h": "24H High",
   "trade.statsBar.low24h": "24H Low",
   "trade.statsBar.makerFee": "Maker Fee",
-  "trade.statsBar.makerFeeSuffix": "paid in {feeSide} (sell side)",
+  "trade.statsBar.makerFeeSuffix": "deducted from receive on sell",
 
   // FillModal error messages
   "trade.fillError.title": "Fill failed",
@@ -975,7 +975,7 @@ const ja: Dictionary = {
   "trade.statsBar.high24h": "24H 高値",
   "trade.statsBar.low24h": "24H 安値",
   "trade.statsBar.makerFee": "メイカー手数料",
-  "trade.statsBar.makerFeeSuffix": "{feeSide} 建て（売り側）",
+  "trade.statsBar.makerFeeSuffix": "売り注文時、受取通貨から差引",
 
   // FillModal error messages
   "trade.fillError.title": "約定に失敗しました",
