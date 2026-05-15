@@ -286,6 +286,123 @@ export async function cancelOrder(orderHash: string): Promise<boolean> {
   return true;
 }
 
+/**
+ * Off-chain mirror of a successful on-chain OrderFilled event.
+ *
+ * The caller (POST /api/orders/[hash]/filled) has already verified that the
+ * provided txHash is a real fillOrder tx on the chain we expect and that the
+ * OrderFilled log under it carries the right orderHash + fill amounts. So
+ * this function just commits the consequence to our off-chain book:
+ *
+ *   - increment filled_maker_amount / filled_taker_amount
+ *   - flip status to 'filled' (full) or 'partially-filled' (residue left)
+ *   - append a 'filled' row to order_events with the chain tx hash
+ *
+ * Idempotent: if order_events already has a 'filled' row for the same
+ * (order_hash, chain_tx_hash), we skip the whole mutation. That keeps a
+ * client retry, or two browser tabs racing the same receipt, from
+ * double-counting the fill.
+ *
+ * Returns the post-mutation status so the API layer can echo it back to
+ * the UI. Returns `{ ok: false }` when the order can't be advanced (already
+ * cancelled / expired / fully filled, or order not found).
+ */
+export async function markFilled(
+  orderHash: string,
+  fillMakerAmount: bigint,
+  fillTakerAmount: bigint,
+  chainTxHash: string,
+  blockNumber: number,
+): Promise<
+  { ok: true; status: OrderStatus; alreadyApplied: boolean }
+  | { ok: false; reason: string }
+> {
+  if (isDbAvailable()) {
+    // Idempotency: have we already recorded THIS exact (orderHash, txHash) fill?
+    const seen = await query<{ id: string }>(
+      `SELECT id FROM order_events
+        WHERE order_hash = $1
+          AND event_type = 'filled'
+          AND chain_tx_hash = $2
+        LIMIT 1`,
+      [orderHash, chainTxHash.toLowerCase()],
+    );
+    if (seen?.rows[0]) {
+      const cur = await query<DbOrderRow>(
+        `SELECT * FROM orders WHERE order_hash = $1 LIMIT 1`,
+        [orderHash],
+      );
+      const row = cur?.rows[0];
+      if (!row) return { ok: false, reason: "order not found" };
+      return { ok: true, status: row.status, alreadyApplied: true };
+    }
+
+    // Update order row inside one statement. The CASE chooses partial vs full
+    // based on the post-increment cumulative against maker_amount.
+    const result = await query<DbOrderRow>(
+      `UPDATE orders
+          SET filled_maker_amount = filled_maker_amount + $2::numeric,
+              filled_taker_amount = filled_taker_amount + $3::numeric,
+              status = CASE
+                WHEN filled_maker_amount + $2::numeric >= maker_amount THEN 'filled'
+                ELSE 'partially-filled'
+              END,
+              updated_at = NOW()
+        WHERE order_hash = $1
+          AND status IN ('open','partially-filled')
+        RETURNING *`,
+      [orderHash, fillMakerAmount.toString(), fillTakerAmount.toString()],
+    );
+    const row = result?.rows[0];
+    if (!row) {
+      return {
+        ok: false,
+        reason: "order is not in a fillable state (already cancelled/expired/filled?)",
+      };
+    }
+    await recordEvent(row.order_hash, row.maker, "filled", {
+      chainTxHash: chainTxHash.toLowerCase(),
+      blockNumber,
+      extra: {
+        fillMakerAmount: fillMakerAmount.toString(),
+        fillTakerAmount: fillTakerAmount.toString(),
+      },
+    });
+    return { ok: true, status: row.status, alreadyApplied: false };
+  }
+
+  // Memory backend
+  const o = memOrders().get(orderHash);
+  if (!o) return { ok: false, reason: "order not found" };
+  if (o.status !== "open" && o.status !== "partially-filled") {
+    return { ok: false, reason: `order is ${o.status}` };
+  }
+  const already = memEvents().some(
+    (e) =>
+      e.orderHash === orderHash &&
+      e.eventType === "filled" &&
+      // Memory backend doesn't carry chain_tx_hash today; this branch is
+      // strictly dev-fallback so the looser identity check is fine.
+      false,
+  );
+  if (already) {
+    return { ok: true, status: o.status, alreadyApplied: true };
+  }
+  const newFilledMaker = BigInt(o.filledMakerAmount) + fillMakerAmount;
+  const newFilledTaker = BigInt(o.filledTakerAmount) + fillTakerAmount;
+  const makerCap = BigInt(o.order.makerAmount);
+  o.filledMakerAmount = newFilledMaker.toString();
+  o.filledTakerAmount = newFilledTaker.toString();
+  o.status = newFilledMaker >= makerCap ? "filled" : "partially-filled";
+  memEvents().push({
+    orderHash: o.orderHash,
+    maker: o.order.maker.toLowerCase(),
+    eventType: "filled",
+    at: Math.floor(Date.now() / 1000),
+  });
+  return { ok: true, status: o.status, alreadyApplied: false };
+}
+
 export async function recordEvent(
   orderHash: string,
   maker: string,

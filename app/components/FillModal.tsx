@@ -143,8 +143,43 @@ export function FillModal({
     if (!writeTx.data) return;
     setPhase(writeReceipt.isLoading ? "confirming-tx" : phase);
     if (writeReceipt.isSuccess) {
+      // Mirror the OrderFilled into the off-chain book BEFORE telling the
+      // parent to refresh. The /api/orders/[hash]/filled endpoint pulls the
+      // receipt server-side, decodes the OrderFilled log, and flips the
+      // order's status. Until that call lands, the board polling can still
+      // return status='open' and the row would linger.
+      //
+      // Fire-and-forget on errors: the taker already got their tokens at
+      // this point and the worst case is that the row sits stale until the
+      // next manual sync — far better than blocking the modal's "done" UI.
+      if (order) {
+        void fetch(`/api/orders/${order.orderHash}/filled`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            txHash: writeTx.data,
+            chainId,
+          }),
+        })
+          .then((r) =>
+            r.ok
+              ? null
+              : r.json().catch(() => null).then((j) =>
+                  console.warn(
+                    "[fill-sync] /api/orders/.../filled returned",
+                    r.status,
+                    j,
+                  ),
+                ),
+          )
+          .catch((e) =>
+            console.warn("[fill-sync] off-chain mirror POST failed", e),
+          )
+          .finally(() => onFilled());
+      } else {
+        onFilled();
+      }
       setPhase("done");
-      onFilled();
     }
     if (writeReceipt.isError) {
       setPhase("error");
