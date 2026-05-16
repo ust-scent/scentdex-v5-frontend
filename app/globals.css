@@ -56,3 +56,13 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.14);
 }
+
+/* 2026-05-16: temporarily hide every wallet option in the RainbowKit
+ * Connect modal except MetaMask. Pure CSS — no wagmi config change —
+ * so other wallets can be brought back simply by deleting this block.
+ * `[data-testid^="rk-wallet-option-"]` matches all wallet buttons that
+ * RainbowKit injects into the modal; the `:not(...)` carve-out keeps
+ * the MetaMask one visible. */
+[data-testid^="rk-wallet-option-"]:not([data-testid="rk-wallet-option-metaMask"]) {
+  display: none !important;
+}
