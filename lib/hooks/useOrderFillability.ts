@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { type Address, type Hex } from "viem";
 import { useChainId, useReadContracts } from "wagmi";
 
-import { ERC20_ABI } from "@/lib/abi";
+import { ERC20_ABI, PERMIT2_ABI } from "@/lib/abi";
 import { PERMIT2_ADDRESS, SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
 
 /**
@@ -14,8 +14,7 @@ import { PERMIT2_ADDRESS, SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
  * signatures attached to each order, the spend-allowance question is
  * answered by the order itself (the `permitSingle + permitSignature`
  * pair scoped to amount=makerAmount, expiration=expiry). The contract
- * does `permit2.permit(...)` just-in-time at fill, so there's no
- * standing Permit2 → DEX allowance to inspect.
+ * does `permit2.permit(...)` just-in-time at fill.
  *
  * What is still required at fill time, and therefore still worth
  * checking on the order book to keep takers from burning gas:
@@ -24,11 +23,17 @@ import { PERMIT2_ADDRESS, SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
  *                                              the sell side?
  *   2. ERC20.allowance(maker, Permit2)     — is the wallet → Permit2
  *                                              hop still in place?
+ *   3. Permit2.allowance(maker, makerToken, DEX).nonce  — does the
+ *                                              signed permit's nonce
+ *                                              still match what
+ *                                              Permit2 will accept?
  *
- * If a maker revoked Permit2 from their ERC-20 after signing, or the
- * tokens left their wallet, the order would revert at fill. The hook
- * marks those as `unfillable`, OrderBook hides them, and BottomTabs
- * surfaces an "Approval needed" badge so the maker can re-approve.
+ * (3) is the addition that catches "looks open in UI but reverts at
+ * fill". If the maker ever filled (or otherwise consumed a Permit2
+ * permit through this spender) since signing, the on-chain nonce has
+ * advanced past the order's signed nonce and `permit2.permit()` will
+ * revert with InvalidNonce. MetaMask then guesses ~21M gas and the
+ * taker sees a broken-looking quote.
  *
  * Notes:
  *  - Orders whose chainId != connected chain are treated as "unknown"
@@ -36,6 +41,9 @@ import { PERMIT2_ADDRESS, SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
  *    filters those out by token-address match before display.
  *  - On RPC blip / loading, we fail open ("unknown") to avoid empty
  *    books on transient errors.
+ *  - Orders missing `permitSingle.details.nonce` skip check (3) and
+ *    fall back to balance + ERC20-allowance only — preserves the
+ *    previous behaviour for legacy rows.
  */
 
 export type FillabilityStatus = "fillable" | "unfillable" | "unknown";
@@ -54,6 +62,17 @@ type OrderInput = {
     makerToken: Address;
     makerAmount: string; // bigint as decimal string
   };
+  /**
+   * The Permit2 nonce baked into the maker's signed PermitSingle. When
+   * present we read Permit2's current on-chain nonce for the same
+   * (owner, token, DEX) triple and flag the order unfillable if the
+   * two diverge. Optional so older callers / legacy rows still work.
+   */
+  permitSingle?: {
+    details: {
+      nonce: number | string | bigint;
+    };
+  };
 };
 
 export function useOrderFillability(orders: OrderInput[]): FillabilityCheck {
@@ -67,11 +86,18 @@ export function useOrderFillability(orders: OrderInput[]): FillabilityCheck {
     [orders, connectedChainId, dexAddress],
   );
 
+  // 3 calls per order: balanceOf, ERC20→Permit2 allowance, and
+  // Permit2.allowance(maker, makerToken, DEX) for the nonce/permit
+  // state. Result indices below assume this stride.
   const contracts = useMemo(() => {
     if (!dexAddress) return [];
+    // The abi type union forces the type erasure here — wagmi's
+    // useReadContracts accepts a heterogeneous abi list at runtime but
+    // TS can't infer the union, so we cast on the consumer side.
     const calls: Array<{
       address: Address;
-      abi: typeof ERC20_ABI;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      abi: any;
       functionName: string;
       args: readonly unknown[];
       chainId: number;
@@ -89,6 +115,13 @@ export function useOrderFillability(orders: OrderInput[]): FillabilityCheck {
         abi: ERC20_ABI,
         functionName: "allowance",
         args: [o.order.maker, PERMIT2_ADDRESS],
+        chainId: connectedChainId,
+      });
+      calls.push({
+        address: PERMIT2_ADDRESS,
+        abi: PERMIT2_ABI,
+        functionName: "allowance",
+        args: [o.order.maker, o.order.makerToken, dexAddress],
         chainId: connectedChainId,
       });
     }
@@ -123,15 +156,18 @@ export function useOrderFillability(orders: OrderInput[]): FillabilityCheck {
 
     for (let i = 0; i < checkable.length; i++) {
       const o = checkable[i];
-      const balanceR = data[i * 2];
-      const allowanceR = data[i * 2 + 1];
+      const balanceR = data[i * 3];
+      const allowanceR = data[i * 3 + 1];
+      const permit2R = data[i * 3 + 2];
       const need = safeBigInt(o.order.makerAmount);
 
       if (
         !balanceR ||
         !allowanceR ||
+        !permit2R ||
         balanceR.status !== "success" ||
         allowanceR.status !== "success" ||
+        permit2R.status !== "success" ||
         need === null
       ) {
         status[o.orderHash] = "unknown";
@@ -140,8 +176,22 @@ export function useOrderFillability(orders: OrderInput[]): FillabilityCheck {
 
       const balance = balanceR.result as bigint;
       const erc20Allowance = allowanceR.result as bigint;
+      // Permit2.allowance returns a (uint160 amount, uint48 expiration,
+      // uint48 nonce) tuple. viem types it as a heterogeneous array.
+      const permit2Tuple = permit2R.result as readonly [bigint, number, number];
+      const onChainNonce = BigInt(permit2Tuple[2]);
 
-      if (balance >= need && erc20Allowance >= need) {
+      // Skip nonce check for legacy rows that don't carry a signed
+      // permitSingle.nonce; preserve their previous fillability story.
+      const signedNonceRaw = o.permitSingle?.details?.nonce;
+      const signedNonce: bigint | null =
+        signedNonceRaw === undefined
+          ? null
+          : safeBigInt(String(signedNonceRaw));
+
+      const nonceOk = signedNonce === null || signedNonce === onChainNonce;
+
+      if (balance >= need && erc20Allowance >= need && nonceOk) {
         status[o.orderHash] = "fillable";
       } else {
         status[o.orderHash] = "unfillable";
