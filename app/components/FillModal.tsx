@@ -5,6 +5,7 @@ import { type Address, type Hex, formatUnits } from "viem";
 import {
   useAccount,
   useChainId,
+  usePublicClient,
   useReadContract,
   useSignTypedData,
   useWaitForTransactionReceipt,
@@ -15,7 +16,7 @@ import { SCENTDEX_V5_ABI } from "@/lib/abi";
 import { SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
 import { useTranslator } from "@/lib/locale-context";
 import { useTokenStatus } from "@/lib/hooks/useTokenStatus";
-import { parseFillError } from "@/lib/parse-fill-error";
+import { fetchRevertError, parseFillError } from "@/lib/parse-fill-error";
 import {
   buildPermit2Domain,
   EMPTY_PERMIT_SIGNATURE,
@@ -30,6 +31,16 @@ import { TOKENS, type Token } from "@/lib/tokens";
 
 /** ms before "Confirming on chain…" gets a "tx is taking too long" warning. */
 const CONFIRM_TIMEOUT_MS = 90_000;
+
+/**
+ * ms a final error screen stays up before the modal auto-closes itself.
+ * Sized to give a reader enough time to absorb a one-line error
+ * (~5 s at conversational reading speed) plus a buffer, while staying
+ * inside the 5–7 s autodismiss window used by mainstream UI guidelines
+ * (Apple HIG, Material). Only applies to the `error` phase; the `done`
+ * phase is left to the parent's success acknowledgment UX.
+ */
+const ERROR_AUTO_CLOSE_MS = 6_000;
 
 /**
  * Fire-and-forget post-fill mirror with retry. Hits
@@ -135,6 +146,9 @@ export function FillModal({
   const { address: account } = useAccount();
   const chainId = useChainId();
   const dexAddress = SCENTDEX_V5_ADDRESS[chainId];
+  // Used to re-simulate a reverted fill tx so we can extract its concrete
+  // revert reason (the tx receipt alone does not carry it).
+  const publicClient = usePublicClient({ chainId });
 
   // The token the taker GIVES UP is the order's takerToken (and the
   // taker RECEIVES the order's makerToken). Approval gate + permit2
@@ -243,8 +257,10 @@ export function FillModal({
 
   // Arm a watchdog the moment a tx hash exists. If the receipt never
   // resolves (mempool starvation, frontrun in a race fill, taker mining
-  // pool issues, …) the user gets an explicit "check your wallet" hint
-  // instead of an infinite "Confirming on-chain…" spinner.
+  // pool issues, …) the user gets an explicit failure state instead of
+  // an infinite "Confirming on-chain…" spinner. The tx may still land
+  // later — wallet history is the source of truth for that — but the
+  // modal does not stay stuck.
   useEffect(() => {
     if (!writeTx.data) return;
     if (writeReceipt.isSuccess || writeReceipt.isError) return;
@@ -252,10 +268,8 @@ export function FillModal({
     timeoutRef.current = setTimeout(() => {
       // Only act if the receipt is still pending.
       if (!writeReceipt.isSuccess && !writeReceipt.isError) {
+        setPhase("error");
         setError(t("trade.fillError.timeout"));
-        // Don't transition out of confirming-tx — the receipt may still
-        // land. Surfacing the warning as `error` is enough to break the
-        // visual silence.
       }
     }, CONFIRM_TIMEOUT_MS);
     return () => {
@@ -272,12 +286,43 @@ export function FillModal({
     if (!writeTx.data) return;
     setPhase(writeReceipt.isLoading ? "confirming-tx" : phase);
     if (writeReceipt.isSuccess) {
-      // Mirror the OrderFilled into the off-chain book. The
-      // /api/orders/[hash]/filled endpoint pulls the receipt server-side,
-      // decodes the OrderFilled log, and flips the order's status. Until
-      // that call lands the board polling can still return status='open'
-      // and the row would linger; same for the History tab not showing
-      // the Filled event.
+      const receipt = writeReceipt.data;
+      // viem resolves `isSuccess === true` even for reverted txs (the
+      // receipt itself was fetched successfully). Distinguish success
+      // vs revert via `receipt.status` before treating it as a fill.
+      if (receipt?.status === "reverted") {
+        setPhase("error");
+        // Best-effort: re-simulate the tx to recover the concrete custom-
+        // error name (e.g. FillExceedsMaker → "already filled by another
+        // taker"). Show a generic "reverted" copy immediately so the user
+        // is never left looking at a spinner while the simulation runs.
+        setError(t("trade.fillError.reverted"));
+        if (publicClient && writeTx.data) {
+          const txHash = writeTx.data;
+          void (async () => {
+            const revertError = await fetchRevertError(
+              publicClient,
+              txHash,
+              receipt,
+              SCENTDEX_V5_ABI,
+            );
+            if (revertError) {
+              setError(parseFillError(revertError, t));
+            }
+          })();
+        }
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+          timeoutRef.current = null;
+        }
+        return;
+      }
+      // Successful fill — mirror the OrderFilled into the off-chain book.
+      // The /api/orders/[hash]/filled endpoint pulls the receipt server-
+      // side, decodes the OrderFilled log, and flips the order's status.
+      // Until that call lands the board polling can still return
+      // status='open' and the row would linger; same for the History tab
+      // not showing the Filled event.
       //
       // Run the sync in the background with retry (handles 202 receipt-
       // not-yet-mined and 5xx transients). `onFilled()` fires immediately
@@ -300,6 +345,20 @@ export function FillModal({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [writeReceipt.isSuccess, writeReceipt.isError, writeReceipt.isLoading]);
+
+  // Auto-close the modal a few seconds after entering the error phase so
+  // a stale failure screen doesn't linger after the user has had time to
+  // read the message. Done phase is intentionally excluded — the parent
+  // owns the success acknowledgment UX (it can keep the modal up, replace
+  // it with a confirmation, or close on its own cadence).
+  useEffect(() => {
+    if (phase !== "error") return;
+    const id = setTimeout(() => {
+      onClose();
+    }, ERROR_AUTO_CLOSE_MS);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
 
   if (!open || !order) return null;
 

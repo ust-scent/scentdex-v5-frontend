@@ -247,6 +247,49 @@ export const SCENTDEX_V5_ABI = [
     inputs: [],
     outputs: [{ name: "", type: "bool" }],
   },
+  // Custom errors — required so viem's decodeErrorResult / re-simulated
+  // revert paths can map a raw 4-byte selector back to a Solidity error
+  // name (e.g. FillExceedsMaker → trade.fillError.alreadyFilled). Without
+  // these entries, decodeErrorResult cannot identify the revert and the
+  // UI falls back to a generic "reverted" copy.
+  // Source: ScentDexV6.sol (lines ~200–275). Keep this list in sync if a
+  // future contract revision adds/removes errors.
+  { type: "error", name: "ZeroFillAmount", inputs: [] },
+  { type: "error", name: "ExpiredOrInvalidExpiry", inputs: [] },
+  { type: "error", name: "InvalidNonce", inputs: [] },
+  { type: "error", name: "TokenNotAllowed", inputs: [] },
+  { type: "error", name: "DegenerateTokens", inputs: [] },
+  { type: "error", name: "PairNotEnabled", inputs: [] },
+  { type: "error", name: "AddressBlacklisted", inputs: [] },
+  { type: "error", name: "OrderAlreadyCancelled", inputs: [] },
+  { type: "error", name: "InvalidSignature", inputs: [] },
+  { type: "error", name: "FillExceedsMaker", inputs: [] },
+  { type: "error", name: "TakerAmountBelowFloor", inputs: [] },
+  { type: "error", name: "PriceRatioAboveCap", inputs: [] },
+  { type: "error", name: "ZeroTreasury", inputs: [] },
+  { type: "error", name: "ZeroToken", inputs: [] },
+  { type: "error", name: "TokenNotContract", inputs: [] },
+  { type: "error", name: "SameToken", inputs: [] },
+  { type: "error", name: "FeeSideNotInPair", inputs: [] },
+  { type: "error", name: "FeeBpsTooHigh", inputs: [] },
+  { type: "error", name: "NonceNotIncreasing", inputs: [] },
+  { type: "error", name: "NoPendingTreasuryChange", inputs: [] },
+  { type: "error", name: "TreasuryTimelockNotElapsed", inputs: [] },
+  { type: "error", name: "TreasuryUnchanged", inputs: [] },
+  { type: "error", name: "InvalidBatchSize", inputs: [] },
+  { type: "error", name: "NotMaker", inputs: [] },
+  { type: "error", name: "ZeroAddress", inputs: [] },
+  { type: "error", name: "ZeroTakerAmount", inputs: [] },
+  { type: "error", name: "FeeSideMismatch", inputs: [] },
+  { type: "error", name: "FeeBpsMismatch", inputs: [] },
+  { type: "error", name: "NoPendingPairChange", inputs: [] },
+  { type: "error", name: "PairTimelockNotElapsed", inputs: [] },
+  { type: "error", name: "Permit2TokenMismatch", inputs: [] },
+  { type: "error", name: "Permit2SpenderMismatch", inputs: [] },
+  { type: "error", name: "Permit2AmountInsufficient", inputs: [] },
+  { type: "error", name: "AllOrdersCancelled", inputs: [] },
+  { type: "error", name: "ZeroResidualTaker", inputs: [] },
+  { type: "error", name: "TreasuryIsContract", inputs: [] },
 ] as const;
 
 /**
