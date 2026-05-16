@@ -3,6 +3,7 @@
 import { useTranslator } from "@/lib/locale-context";
 import { useFillEvents } from "@/lib/hooks/useFillEvents";
 import { usePairConfig } from "@/lib/hooks/usePairConfig";
+import { formatPrice } from "@/lib/format-price";
 import { type Pair } from "@/lib/tokens";
 
 /**
@@ -21,7 +22,8 @@ export function StatsBar({ pair }: { pair: Pair }) {
   const stats = useFillEvents(pair);
   const cfg = usePairConfig(pair);
 
-  const priceText = stats.latestPrice !== undefined ? fmtPrice(stats.latestPrice) : "—";
+  const priceText =
+    stats.latestPrice !== undefined ? formatPrice(stats.latestPrice) : "—";
   const changeText =
     stats.priceChange24h !== undefined ? fmtChange(stats.priceChange24h) : "—";
   const positive = (stats.priceChange24h ?? 0) >= 0;
@@ -29,9 +31,8 @@ export function StatsBar({ pair }: { pair: Pair }) {
   const volumeText = stats.fills.length > 0
     ? `${fmtAmount(stats.volume24h)} ${pair.quote}`
     : "—";
-  const highText =
-    stats.high24h !== undefined ? fmtPrice(stats.high24h) : "—";
-  const lowText = stats.low24h !== undefined ? fmtPrice(stats.low24h) : "—";
+  const highText = formatPrice(stats.high24h);
+  const lowText = formatPrice(stats.low24h);
 
   // Use locale-aware formatting so sub-1% rates (e.g. 30 bps = 0.3%) survive
   // — the previous toFixed(0) collapsed them to "0%" and made traders think
@@ -108,18 +109,6 @@ function Field({
       </div>
     </div>
   );
-}
-
-function fmtPrice(price: number): string {
-  if (!Number.isFinite(price) || price === 0) return "0";
-  // Adapt decimals to magnitude — tight pairs need more, big-quote pairs
-  // need fewer. 4 decimals at scale ≥ 1, 6 decimals down to 0.0001, 8
-  // decimals below that.
-  const decimals = price >= 1 ? 4 : price >= 0.0001 ? 6 : 8;
-  return price.toLocaleString("en-US", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: decimals,
-  });
 }
 
 function fmtAmount(n: number): string {

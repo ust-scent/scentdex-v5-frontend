@@ -277,6 +277,10 @@ export type Dictionary = {
   "trade.statsBar.makerFee": string;
   "trade.statsBar.makerFeeSuffix": string;
 
+  // Trade page — order book crossed-state copy
+  "trade.orderbook.crossedWarning": string;
+  "trade.orderbook.crossed": string;
+
   // Trade page — FillModal error messages (V5 custom error mapping)
   "trade.fillError.title": string;
   "trade.fillError.walletRejected": string;
@@ -679,6 +683,9 @@ const en: Dictionary = {
   "trade.statsBar.low24h": "24H Low",
   "trade.statsBar.makerFee": "Maker Fee",
   "trade.statsBar.makerFeeSuffix": "deducted from receive on sell",
+  "trade.orderbook.crossedWarning":
+    "Orderbook crossed — arbitrage opportunity available",
+  "trade.orderbook.crossed": "crossed",
 
   // FillModal error messages
   "trade.fillError.title": "Fill failed",
@@ -1108,6 +1115,9 @@ const ja: Dictionary = {
   "trade.statsBar.low24h": "24H 安値",
   "trade.statsBar.makerFee": "メイカー手数料",
   "trade.statsBar.makerFeeSuffix": "売り注文時、受取通貨から差引",
+  "trade.orderbook.crossedWarning":
+    "板が交差しています — アービトラージ機会あり",
+  "trade.orderbook.crossed": "交差中",
 
   // FillModal error messages
   "trade.fillError.title": "約定に失敗しました",

@@ -6,6 +6,7 @@ import {
   classifyCancelRate,
   useMakerStats,
 } from "@/lib/hooks/useMakerStats";
+import { formatPrice } from "@/lib/format-price";
 import { TOKENS, type Pair } from "@/lib/tokens";
 import { useEffect, useMemo, useState } from "react";
 import { formatUnits, type Address, type Hex } from "viem";
@@ -130,7 +131,7 @@ export function OrderBook({ pair }: { pair: Pair }) {
     0,
   );
 
-  const { asks, bids, midPrice, spread, spreadBps } = useMemo(
+  const { asks, bids, midPrice, spread, spreadBps, crossed } = useMemo(
     () => deriveBook(fillableOrders, pair, chainId),
     [fillableOrders, pair, chainId],
   );
@@ -195,20 +196,23 @@ export function OrderBook({ pair }: { pair: Pair }) {
               />
             ))}
 
-            <div className="flex items-center justify-between px-4 py-3 border-y border-line bg-white/[0.015]">
-              <span className="text-[18px] tnum">
-                {midPrice ? midPrice.toFixed(4) : "—"}
-              </span>
-              <span className="text-[11px] text-fg-faint">
-                {t("trade.orderBook.spread")}{" "}
-                <span className="tnum text-fg-dim">
-                  {spread ? spread.toFixed(4) : "—"}
-                </span>{" "}
-                <span className="tnum">
-                  ({spreadBps ? spreadBps.toFixed(2) + "%" : "—"})
+            {crossed ? (
+              <div className="flex items-center gap-2 px-4 py-3 border-y border-amber-500/40 bg-amber-500/10 text-[12px] text-amber-200">
+                <span aria-hidden="true">⚠</span>
+                <span>{t("trade.orderbook.crossedWarning")}</span>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between px-4 py-3 border-y border-line bg-white/[0.015]">
+                <span className="text-[18px] tnum">{formatPrice(midPrice)}</span>
+                <span className="text-[11px] text-fg-faint">
+                  {t("trade.orderBook.spread")}{" "}
+                  <span className="tnum text-fg-dim">{formatPrice(spread)}</span>{" "}
+                  <span className="tnum">
+                    ({spreadBps !== null ? spreadBps.toFixed(2) + "%" : "—"})
+                  </span>
                 </span>
-              </span>
-            </div>
+              </div>
+            )}
 
             {bids.map((r) => (
               <BookRow
@@ -315,7 +319,7 @@ function BookRow({
             aria-hidden="true"
           />
         ) : null}
-        <span>{row.price.toFixed(4)}</span>
+        <span>{formatPrice(row.price)}</span>
         {reputationBadge}
         {isOwn ? (
           <span className="text-[9px] font-mono px-1 rounded bg-white/[0.06] text-fg-faint">
@@ -337,7 +341,14 @@ function deriveBook(orders: ApiOrder[], pair: Pair, chainId: number) {
   const baseToken = TOKENS.find((t) => t.symbol === pair.base);
   const quoteToken = TOKENS.find((t) => t.symbol === pair.quote);
   if (!baseToken || !quoteToken) {
-    return { asks: [], bids: [], midPrice: null, spread: null, spreadBps: null };
+    return {
+      asks: [],
+      bids: [],
+      midPrice: null,
+      spread: null,
+      spreadBps: null,
+      crossed: false,
+    };
   }
 
   const baseAddr = (baseToken.addresses[chainId] ?? "").toLowerCase();
@@ -422,14 +433,25 @@ function deriveBook(orders: ApiOrder[], pair: Pair, chainId: number) {
   // bids block).
   const bestAsk = asks[asks.length - 1]?.price ?? null;
   const bestBid = bids[0]?.price ?? null;
-  const midPrice =
-    bestAsk !== null && bestBid !== null
+  // A crossed book (bestAsk < bestBid) is structurally an open arbitrage
+  // — signed-order DEX semantics mean the wires don't auto-match, so the
+  // condition can persist until a taker (or a keeper bot) fills both
+  // legs. We surface it as a banner instead of computing a negative
+  // spread / nonsensical mid, which would otherwise read as a real
+  // market level.
+  const crossed =
+    bestAsk !== null && bestBid !== null && bestAsk < bestBid;
+  const midPrice = crossed
+    ? null
+    : bestAsk !== null && bestBid !== null
       ? (bestAsk + bestBid) / 2
       : bestAsk ?? bestBid;
   const spread =
-    bestAsk !== null && bestBid !== null ? bestAsk - bestBid : null;
+    !crossed && bestAsk !== null && bestBid !== null
+      ? bestAsk - bestBid
+      : null;
   const spreadBps =
     spread !== null && midPrice ? (spread / midPrice) * 100 : null;
 
-  return { asks, bids, midPrice, spread, spreadBps };
+  return { asks, bids, midPrice, spread, spreadBps, crossed };
 }
