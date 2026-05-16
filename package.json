@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "legal:split": "node scripts/split-legal-multilingual.mjs"
+    "legal:split": "node scripts/split-legal-multilingual.mjs",
+    "keeper": "node scripts/keeper-bot.mjs",
+    "migrate:keeper": "node scripts/migrate-keeper-flags.mjs"
   },
   "dependencies": {
     "@rainbow-me/rainbowkit": "^2.2.10",

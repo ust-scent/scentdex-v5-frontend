@@ -169,16 +169,25 @@ export async function insertOrder(o: StoredOrder): Promise<void> {
 export async function listOrders(filter: {
   pair?: string;
   chainId?: number;
+  /**
+   * When false (default), rows that the keeper-bot has flagged as
+   * unfillable (`keeper_hidden = TRUE`) are filtered out, keeping
+   * the public order book clean. Set to true from admin / debug
+   * surfaces that need to see every row regardless of state.
+   */
+  includeKeeperHidden?: boolean;
 }): Promise<StoredOrder[]> {
   const now = Math.floor(Date.now() / 1000);
+  const includeKeeperHidden = filter.includeKeeperHidden === true;
 
   if (isDbAvailable()) {
     const result = await query<DbOrderRow>(
       `SELECT * FROM orders
         WHERE ($1::text IS NULL OR pair = $1)
           AND ($2::int  IS NULL OR chain_id = $2)
+          AND ($3::bool OR keeper_hidden = FALSE)
         ORDER BY created_at DESC`,
-      [filter.pair ?? null, filter.chainId ?? null],
+      [filter.pair ?? null, filter.chainId ?? null, includeKeeperHidden],
     );
 
     const rows = result?.rows ?? [];
@@ -210,7 +219,8 @@ export async function listOrders(filter: {
     return orders;
   }
 
-  // Memory backend
+  // Memory backend — keeper_hidden lives on DB only; for the memory
+  // fallback (local dev without Postgres) all rows are visible.
   const all = Array.from(memOrders().values());
   return all
     .filter((o) => (filter.pair ? o.pair === filter.pair : true))

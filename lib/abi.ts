@@ -247,6 +247,22 @@ export const SCENTDEX_V5_ABI = [
     inputs: [],
     outputs: [{ name: "", type: "bool" }],
   },
+  // Auto-generated getters for public mappings on ScentDexV6 — required
+  // by the keeper-bot's fillability rescan.
+  {
+    type: "function",
+    name: "filledMakerAmount",
+    stateMutability: "view",
+    inputs: [{ name: "", type: "bytes32" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "cancelled",
+    stateMutability: "view",
+    inputs: [{ name: "", type: "bytes32" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
   // Custom errors — required so viem's decodeErrorResult / re-simulated
   // revert paths can map a raw 4-byte selector back to a Solidity error
   // name (e.g. FillExceedsMaker → trade.fillError.alreadyFilled). Without
