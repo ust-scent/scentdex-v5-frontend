@@ -32,6 +32,47 @@ import { TOKENS, type Token } from "@/lib/tokens";
 const CONFIRM_TIMEOUT_MS = 90_000;
 
 /**
+ * Fire-and-forget post-fill mirror with retry. Hits
+ * POST /api/orders/[hash]/filled and retries on 202 (tx not yet mined) and
+ * 5xx (transient backend) with exponential backoff. Stops on 2xx or 4xx
+ * (other than 202). All errors are swallowed silently — by design the
+ * browser console must not leak API paths or RPC details (sec policy).
+ *
+ * If every attempt fails the order row sits stale until the next manual
+ * sync surface lands, which is materially better than the previous
+ * single-shot fire-and-forget that gave up on the first transient error
+ * (the bug behind "filled orders linger on the board, no Filled in
+ * History").
+ */
+async function syncFilledWithRetry(
+  orderHash: Hex,
+  txHash: Hex,
+  chainId: number,
+): Promise<void> {
+  const maxAttempts = 4;
+  const baseDelayMs = 2_000;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const res = await fetch(`/api/orders/${orderHash}/filled`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ txHash, chainId }),
+      });
+      if (res.ok) return;
+      // 202 = receipt not yet mined; 5xx = transient backend. Both retryable.
+      // Any other 4xx is permanent (bad payload, order not found, etc.) —
+      // give up rather than spam the API.
+      if (res.status !== 202 && res.status < 500) return;
+    } catch {
+      // Network-level error — retry.
+    }
+    if (attempt < maxAttempts - 1) {
+      await new Promise((r) => setTimeout(r, baseDelayMs * 2 ** attempt));
+    }
+  }
+}
+
+/**
  * Fill modal — opens when a taker clicks a row in the order book.
  *
  * Two wallet popups in the happy path:
@@ -231,33 +272,22 @@ export function FillModal({
     if (!writeTx.data) return;
     setPhase(writeReceipt.isLoading ? "confirming-tx" : phase);
     if (writeReceipt.isSuccess) {
-      // Mirror the OrderFilled into the off-chain book BEFORE telling the
-      // parent to refresh. The /api/orders/[hash]/filled endpoint pulls the
-      // receipt server-side, decodes the OrderFilled log, and flips the
-      // order's status. Until that call lands, the board polling can still
-      // return status='open' and the row would linger.
+      // Mirror the OrderFilled into the off-chain book. The
+      // /api/orders/[hash]/filled endpoint pulls the receipt server-side,
+      // decodes the OrderFilled log, and flips the order's status. Until
+      // that call lands the board polling can still return status='open'
+      // and the row would linger; same for the History tab not showing
+      // the Filled event.
       //
-      // Fire-and-forget on errors: the taker already got their tokens at
-      // this point and the worst case is that the row sits stale until the
-      // next manual sync — far better than blocking the modal's "done" UI.
-      // Errors are swallowed silently to keep API paths / RPC URLs out of
-      // the browser console (sec policy: nothing identifiable in devtools).
-      if (order) {
-        void fetch(`/api/orders/${order.orderHash}/filled`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            txHash: writeTx.data,
-            chainId,
-          }),
-        })
-          .catch(() => {
-            // intentional no-op — see comment above
-          })
-          .finally(() => onFilled());
-      } else {
-        onFilled();
+      // Run the sync in the background with retry (handles 202 receipt-
+      // not-yet-mined and 5xx transients). `onFilled()` fires immediately
+      // so the modal's "done" UI is not blocked on backend latency — the
+      // parent's orderbook polling will pick up the status flip as soon
+      // as the mirror lands.
+      if (order && writeTx.data) {
+        void syncFilledWithRetry(order.orderHash, writeTx.data, chainId);
       }
+      onFilled();
       setPhase("done");
     }
     if (writeReceipt.isError) {
