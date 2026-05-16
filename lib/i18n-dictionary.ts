@@ -687,7 +687,7 @@ const en: Dictionary = {
   "trade.fillError.title": "Fill failed",
   "trade.fillError.walletRejected": "You declined the request in your wallet.",
   "trade.fillError.timeout":
-    "Transaction is taking longer than expected. Check your wallet for a pending request.",
+    "This order has already been filled by someone else.",
   "trade.fillError.alreadyFilled":
     "This order has already been filled by someone else.",
   "trade.fillError.cancelled": "The maker cancelled this order before your fill landed.",
@@ -1113,7 +1113,7 @@ const ja: Dictionary = {
   "trade.fillError.title": "約定に失敗しました",
   "trade.fillError.walletRejected": "ウォレットで取引を拒否しました。",
   "trade.fillError.timeout":
-    "取引の確認に時間がかかっています。ウォレットの保留中リクエストを確認してください。",
+    "この注文は別の利用者によって既に約定済みです。",
   "trade.fillError.alreadyFilled":
     "この注文は別の利用者によって既に約定済みです。",
   "trade.fillError.cancelled":
