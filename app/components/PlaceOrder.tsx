@@ -4,6 +4,7 @@ import {
   SignConfirmModal,
   type SignConfirmContext,
 } from "@/app/components/SignConfirmModal";
+import { TermsConsentCheckbox } from "@/app/components/TermsConsentCheckbox";
 import { useTranslator } from "@/lib/locale-context";
 import { SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
 import { useTokenStatus } from "@/lib/hooks/useTokenStatus";
@@ -87,6 +88,10 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
   const [lastResult, setLastResult] = useState<
     { ok: true; signature: string; orderHash?: string } | { ok: false; error: string } | null
   >(null);
+  // Per-order click-wrap consent. Reset to `false` after every submit
+  // attempt (success or failure) so the maker must re-tick the box for
+  // each new order — i.e. the user re-affirms the Terms every time.
+  const [termsAgreed, setTermsAgreed] = useState(false);
 
   // True between the moment the user clicks "Sign Order" and the modal opens.
   // While set, the auto-approve flow is gating: as soon as the maker token's
@@ -362,9 +367,11 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
       setModalOpen(false);
       setSize("");
       setUnitPrice("");
+      setTermsAgreed(false);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setLastResult({ ok: false, error: msg.slice(0, 160) });
+      setTermsAgreed(false);
     }
   }
 
@@ -569,11 +576,22 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
           </div>
         ) : null}
 
+        <TermsConsentCheckbox
+          checked={termsAgreed}
+          onChange={setTermsAgreed}
+        />
+
         <button
           onClick={startSign}
-          disabled={!canSign || signing || makerStatus.isApproving}
+          disabled={
+            !canSign || !termsAgreed || signing || makerStatus.isApproving
+          }
           className="mt-2 w-full py-3 rounded-md bg-accent text-bg font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-          title={reasons.join(" · ")}
+          title={
+            !termsAgreed && canSign
+              ? t("terms.consent.required")
+              : reasons.join(" · ")
+          }
         >
           {!canSign
             ? reasons[0]

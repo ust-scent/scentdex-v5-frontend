@@ -349,19 +349,15 @@ export type Dictionary = {
   "footer.copyright": string;
 
   // Legal documents (Terms / Privacy)
-  "legal.language.label": string;
   "legal.translation.notice": string;
-  "legal.translation.viewEnglish": string;
 
-  // Click-wrap acceptance modal (first wallet connect)
-  "terms.modal.title": string;
-  "terms.modal.body": string;
-  "terms.modal.checkbox": string;
-  "terms.modal.viewTerms": string;
-  "terms.modal.viewPrivacy": string;
-  "terms.modal.continue": string;
-  "terms.modal.cancel": string;
-  "terms.modal.revisionNotice": string;
+  // Per-order click-wrap consent (PlaceOrder / FillModal)
+  "terms.consent.prefix": string;
+  "terms.consent.termsLink": string;
+  "terms.consent.privacyLink": string;
+  "terms.consent.joiner": string;
+  "terms.consent.suffix": string;
+  "terms.consent.required": string;
 
   // Cookie banner
   "cookie.banner.body": string;
@@ -776,22 +772,16 @@ const en: Dictionary = {
   "footer.copyright":
     "© Universal Scent Technology Pte. Ltd. All rights reserved.",
 
-  "legal.language.label": "Document language",
   "legal.translation.notice":
     "This is a convenience translation. The English version is the authoritative original — in case of conflict, the English version prevails.",
-  "legal.translation.viewEnglish": "View the English original →",
 
-  "terms.modal.title": "Before you connect a wallet",
-  "terms.modal.body":
-    "Please review and accept our Terms of Service and Privacy Policy. By using SCENT DEX, you agree to be bound by these terms.",
-  "terms.modal.checkbox":
-    "I have read and agree to the Terms of Service and Privacy Policy.",
-  "terms.modal.viewTerms": "Read the Terms of Service",
-  "terms.modal.viewPrivacy": "Read the Privacy Policy",
-  "terms.modal.continue": "Accept and continue",
-  "terms.modal.cancel": "Disconnect",
-  "terms.modal.revisionNotice":
-    "These terms were last updated on {date}. Please re-confirm your acceptance.",
+  "terms.consent.prefix": "I have read and agree to the",
+  "terms.consent.termsLink": "Terms of Service",
+  "terms.consent.privacyLink": "Privacy Policy",
+  "terms.consent.joiner": "and",
+  "terms.consent.suffix": ".",
+  "terms.consent.required":
+    "Please tick the box to confirm you accept the Terms before placing this order.",
 
   "cookie.banner.body":
     "We use cookies for security, language preference, and basic analytics. By using this site you agree to our use of cookies.",
@@ -1209,22 +1199,16 @@ const ja: Dictionary = {
   "footer.copyright":
     "© Universal Scent Technology Pte. Ltd. All rights reserved.",
 
-  "legal.language.label": "言語",
   "legal.translation.notice":
     "本翻訳は参考のためのものです。英語版が正本であり、矛盾が生じた場合は英語版が優先します。",
-  "legal.translation.viewEnglish": "英語原文を見る →",
 
-  "terms.modal.title": "ウォレット接続の前に",
-  "terms.modal.body":
-    "利用規約とプライバシーポリシーをご確認ください。SCENT DEX をご利用いただくことで、これらの条件に同意したものとみなされます。",
-  "terms.modal.checkbox":
-    "利用規約およびプライバシーポリシーを読み、これに同意します。",
-  "terms.modal.viewTerms": "利用規約を読む",
-  "terms.modal.viewPrivacy": "プライバシーポリシーを読む",
-  "terms.modal.continue": "同意して続ける",
-  "terms.modal.cancel": "切断する",
-  "terms.modal.revisionNotice":
-    "本規約は {date} に改訂されました。再度ご同意ください。",
+  "terms.consent.prefix": "",
+  "terms.consent.termsLink": "利用規約",
+  "terms.consent.privacyLink": "プライバシーポリシー",
+  "terms.consent.joiner": "および",
+  "terms.consent.suffix": "を読み、これに同意します。",
+  "terms.consent.required":
+    "注文する前に、利用規約に同意するチェックボックスにチェックを入れてください。",
 
   "cookie.banner.body":
     "本サイトはセキュリティ、言語設定、基本的なアクセス解析のために Cookie を使用します。本サイトをご利用いただくことで、Cookie の使用に同意したものとみなされます。",

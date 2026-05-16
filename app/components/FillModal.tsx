@@ -13,6 +13,7 @@ import {
 } from "wagmi";
 
 import { SCENTDEX_V5_ABI } from "@/lib/abi";
+import { TermsConsentCheckbox } from "@/app/components/TermsConsentCheckbox";
 import { SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
 import { useTranslator } from "@/lib/locale-context";
 import { useTokenStatus } from "@/lib/hooks/useTokenStatus";
@@ -227,6 +228,11 @@ export function FillModal({
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
+  // Per-order click-wrap consent. Reset to `false` when the modal closes
+  // and after every submit attempt (success or failure) so the taker must
+  // re-tick the box for each fill — i.e. the user re-affirms the Terms on
+  // every transaction.
+  const [termsAgreed, setTermsAgreed] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Reset transient state every time we (re)open with a different order.
@@ -334,10 +340,12 @@ export function FillModal({
       }
       onFilled();
       setPhase("done");
+      setTermsAgreed(false);
     }
     if (writeReceipt.isError) {
       setPhase("error");
       setError(parseFillError(writeReceipt.error, t));
+      setTermsAgreed(false);
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
@@ -464,6 +472,7 @@ export function FillModal({
     } catch (e) {
       setPhase("error");
       setError(parseFillError(e, t));
+      setTermsAgreed(false);
       return;
     }
 
@@ -518,6 +527,7 @@ export function FillModal({
     } catch (e) {
       setPhase("error");
       setError(parseFillError(e, t));
+      setTermsAgreed(false);
     }
   }
 
@@ -550,7 +560,7 @@ export function FillModal({
   // and "close in one click" beats either alone.
   const buttonAction =
     phase === "error"
-      ? onClose
+      ? handleClose
       : needsErc20Approval
       ? () => {
           setPhase("approving-erc20");
@@ -572,6 +582,10 @@ export function FillModal({
     !notSelf ||
     !hasMakerPermit ||
     previewBlocking ||
+    // Consent gating: the box must be ticked for every fill. In the
+    // "error" phase the button repurposes itself into "close & retry",
+    // so we don't block that recovery path on the checkbox.
+    (!termsAgreed && phase !== "error") ||
     phase === "awaiting-permit-sig" ||
     phase === "submitting-tx" ||
     phase === "confirming-tx" ||
@@ -579,6 +593,14 @@ export function FillModal({
     writeTx.isPending ||
     writeReceipt.isLoading ||
     takerStatus.isApproving;
+
+  // Wrap parent close so dismissing the modal always clears consent. The
+  // next time the same (or a different) order opens, the checkbox starts
+  // unticked again.
+  function handleClose() {
+    setTermsAgreed(false);
+    onClose();
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -588,7 +610,7 @@ export function FillModal({
             {t("trade.fillModal.title")}
           </h2>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="text-fg-faint hover:text-fg text-[20px] leading-none"
             aria-label="close"
           >
@@ -702,9 +724,21 @@ export function FillModal({
             <Note kind="warn">{t("trade.fillModal.walletPopupHint")}</Note>
           ) : null}
 
+          {!isAlreadyDone && phase !== "error" ? (
+            <TermsConsentCheckbox
+              checked={termsAgreed}
+              onChange={setTermsAgreed}
+            />
+          ) : null}
+
           <button
             onClick={buttonAction}
             disabled={buttonDisabled}
+            title={
+              !termsAgreed && phase !== "error" && !isAlreadyDone
+                ? t("terms.consent.required")
+                : undefined
+            }
             className="w-full mt-2 py-3 rounded-md bg-accent text-bg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {buttonLabel}

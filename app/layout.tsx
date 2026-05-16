@@ -5,7 +5,6 @@ import { CookieBanner } from "@/app/components/CookieBanner";
 import { Footer } from "@/app/components/Footer";
 import { Header } from "@/app/components/Header";
 import { Providers } from "@/app/providers";
-import { TermsAcceptanceModal } from "@/app/components/TermsAcceptanceModal";
 import { getRequestLocale } from "@/lib/locale-server";
 import "./globals.css";
 
@@ -61,7 +60,6 @@ export default async function RootLayout({
           <Header initialLocale={locale} />
           <main className="flex-1">{children}</main>
           <Footer locale={locale} />
-          <TermsAcceptanceModal locale={locale} />
           <CookieBanner locale={locale} />
         </Providers>
       </body>
