@@ -393,11 +393,19 @@ function deriveBook(orders: ApiOrder[], pair: Pair, chainId: number) {
     (isSell ? asks : bids).push(row);
   }
 
-  // Sort: asks ascending price (top of book at top), bids descending price
-  asks.sort((a, b) => a.price - b.price);
+  // Sort so both sides converge on best-price toward the centre spread —
+  // standard DEX order-book layout (Binance, Uniswap, 1inch, 0x, …):
+  //   asks (descending): top row = highest ask, bottom row = best ask
+  //   bids (descending): top row = best bid, bottom row = lowest bid
+  // Reading down the asks → up the bids therefore tracks falling price
+  // through the spread continuously.
+  asks.sort((a, b) => b.price - a.price);
   bids.sort((a, b) => b.price - a.price);
 
-  // Cumulative totals for the depth bars.
+  // Cumulative totals for the depth bars. Both sides accumulate AWAY
+  // from the centre spread so the bar visually grows as you move toward
+  // worse prices. For asks: walk bottom→top (best ask is at the bottom);
+  // for bids: walk top→bottom (best bid is at the top).
   let cum = 0;
   for (let i = asks.length - 1; i >= 0; i--) {
     cum += asks[i].amount;
@@ -409,7 +417,10 @@ function deriveBook(orders: ApiOrder[], pair: Pair, chainId: number) {
     b.total = cum;
   }
 
-  const bestAsk = asks[0]?.price ?? null;
+  // Best prices sit adjacent to the spread: best ask = last asks row
+  // (bottom of the asks block), best bid = first bids row (top of the
+  // bids block).
+  const bestAsk = asks[asks.length - 1]?.price ?? null;
   const bestBid = bids[0]?.price ?? null;
   const midPrice =
     bestAsk !== null && bestBid !== null
