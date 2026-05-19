@@ -479,50 +479,69 @@ export function FillModal({
     // 2) fillOrder() on-chain.
     const makerPermitReified = reifyPermitSingle(order.permitSingle!);
 
+    const fillArgs = [
+      {
+        maker: order.order.maker,
+        makerToken: order.order.makerToken,
+        takerToken: order.order.takerToken,
+        makerAmount: BigInt(order.order.makerAmount),
+        takerAmount: BigInt(order.order.takerAmount),
+        expiry: BigInt(order.order.expiry),
+        nonce: BigInt(order.order.nonce),
+        salt: order.order.salt,
+        feeSide: order.order.feeSide,
+        feeBps: order.order.feeBps,
+      },
+      order.signature,
+      remainingMaker,
+      {
+        details: {
+          token: takerPermit.details.token,
+          amount: takerPermit.details.amount,
+          expiration: takerPermit.details.expiration,
+          nonce: takerPermit.details.nonce,
+        },
+        spender: takerPermit.spender,
+        sigDeadline: takerPermit.sigDeadline,
+      },
+      takerPermitSig,
+      {
+        details: {
+          token: makerPermitReified.details.token,
+          amount: makerPermitReified.details.amount,
+          expiration: makerPermitReified.details.expiration,
+          nonce: makerPermitReified.details.nonce,
+        },
+        spender: makerPermitReified.spender,
+        sigDeadline: makerPermitReified.sigDeadline,
+      },
+      order.permitSignature as Hex,
+    ] as const;
+
     try {
       setPhase("submitting-tx");
+
+      // Preflight on-chain simulation. wagmi's writeContract action does
+      // not auto-simulate, so without this gate the failing eth_estimateGas
+      // happens *inside* MetaMask, which then falls back to the block gas
+      // limit (~21M) and quotes the taker an absurd fee for a tx that would
+      // just revert. Catching it here lets us surface the actual revert
+      // reason in our own error UI before any wallet popup appears.
+      if (publicClient && account) {
+        await publicClient.simulateContract({
+          account,
+          address: dexAddress,
+          abi: SCENTDEX_V5_ABI,
+          functionName: "fillOrder",
+          args: fillArgs,
+        });
+      }
+
       writeTx.writeContract({
         address: dexAddress,
         abi: SCENTDEX_V5_ABI,
         functionName: "fillOrder",
-        args: [
-          {
-            maker: order.order.maker,
-            makerToken: order.order.makerToken,
-            takerToken: order.order.takerToken,
-            makerAmount: BigInt(order.order.makerAmount),
-            takerAmount: BigInt(order.order.takerAmount),
-            expiry: BigInt(order.order.expiry),
-            nonce: BigInt(order.order.nonce),
-            salt: order.order.salt,
-            feeSide: order.order.feeSide,
-            feeBps: order.order.feeBps,
-          },
-          order.signature,
-          remainingMaker,
-          {
-            details: {
-              token: takerPermit.details.token,
-              amount: takerPermit.details.amount,
-              expiration: takerPermit.details.expiration,
-              nonce: takerPermit.details.nonce,
-            },
-            spender: takerPermit.spender,
-            sigDeadline: takerPermit.sigDeadline,
-          },
-          takerPermitSig,
-          {
-            details: {
-              token: makerPermitReified.details.token,
-              amount: makerPermitReified.details.amount,
-              expiration: makerPermitReified.details.expiration,
-              nonce: makerPermitReified.details.nonce,
-            },
-            spender: makerPermitReified.spender,
-            sigDeadline: makerPermitReified.sigDeadline,
-          },
-          order.permitSignature as Hex,
-        ],
+        args: fillArgs,
       });
     } catch (e) {
       setPhase("error");
