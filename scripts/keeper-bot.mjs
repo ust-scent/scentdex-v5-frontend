@@ -31,7 +31,7 @@ import { createPublicClient, http, parseAbi } from "viem";
 import { mainnet } from "viem/chains";
 
 const DRY_RUN = process.argv.includes("--dry-run");
-const SCAN_INTERVAL_MS = 30_000;
+const SCAN_INTERVAL_MS = Number(process.env.SCAN_INTERVAL_MS) || 300_000;
 const CHAIN_ID = 1;
 const DEX_ADDRESS = "0x9962584c755f943f2c29dF190dA97008db216D16";
 const PERMIT2_ADDRESS = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
