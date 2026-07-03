@@ -17,6 +17,7 @@ import { TermsConsentCheckbox } from "@/app/components/TermsConsentCheckbox";
 import { SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
 import { useTranslator } from "@/lib/locale-context";
 import { useTokenStatus } from "@/lib/hooks/useTokenStatus";
+import { useWeth } from "@/lib/hooks/useWeth";
 import { fetchRevertError, parseFillError } from "@/lib/parse-fill-error";
 import {
   buildPermit2Domain,
@@ -126,6 +127,7 @@ export type FillOrder = {
 
 type Phase =
   | "idle"
+  | "wrapping-eth"
   | "approving-erc20"
   | "awaiting-permit-sig"
   | "submitting-tx"
@@ -182,6 +184,11 @@ export function FillModal({
       accentClass: "",
     } as unknown as Token,
   );
+
+  // Auto-wrap (SDT/WETH test market): when the taker pays in WETH but their
+  // WETH balance can't cover the fill, a WETH9.deposit() leg is inserted
+  // before the approve/permit/fill pipeline. Inert on non-WETH pairs.
+  const weth = useWeth();
 
   const t = useTranslator();
   const { signTypedDataAsync, isPending: signing } = useSignTypedData();
@@ -354,6 +361,34 @@ export function FillModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [writeReceipt.isSuccess, writeReceipt.isError, writeReceipt.isLoading]);
 
+  // Auto-advance once the auto-wrap deposit confirms: continue to the
+  // ERC-20 approve leg if it's missing, otherwise straight into the
+  // permit-sign + fillOrder pipeline — the same chain a direct Fill click
+  // takes when the WETH balance is already sufficient.
+  useEffect(() => {
+    if (phase !== "wrapping-eth") return;
+    if (!weth.isWrapConfirmed) return;
+    if (!takerStatus.isErc20Approved && Boolean(takerTokenAddr)) {
+      setPhase("approving-erc20");
+      takerStatus.approve();
+      return;
+    }
+    setPhase("idle");
+    void onFillClick();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, weth.isWrapConfirmed]);
+
+  // Surface a wrap failure (user reject / RPC error) via the normal error
+  // phase instead of leaving the modal stuck on "wrapping".
+  useEffect(() => {
+    if (phase !== "wrapping-eth" || !weth.wrapError) return;
+    setPhase("error");
+    setError(parseFillError(weth.wrapError, t));
+    setTermsAgreed(false);
+    weth.resetWrap();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, weth.wrapError]);
+
   // Auto-close the modal a few seconds after entering the error phase so
   // a stale failure screen doesn't linger after the user has had time to
   // read the message. Done phase is intentionally excluded — the parent
@@ -433,6 +468,11 @@ export function FillModal({
 
   // -- Action: ERC-20 → Permit2 approve (one-time, taker side) -----------------
   const needsErc20Approval = !takerStatus.isErc20Approved && Boolean(takerTokenAddr);
+
+  // -- Action: auto-wrap (taker pays WETH, balance short) -----------------------
+  const takerIsWeth = takerTokenMeta?.symbol === "WETH";
+  const wethShortfall = takerIsWeth ? weth.shortfallFor(remainingTaker) : 0n;
+  const needsWrap = wethShortfall > 0n;
 
   // -- Action: sign per-fill PermitSingle then fillOrder() ---------------------
   async function onFillClick() {
@@ -538,6 +578,8 @@ export function FillModal({
     // current status and rebuild a fresh permit) instead of letting them
     // re-press into the same wall.
     if (phase === "error") return t("trade.fillError.closeAndRetry");
+    if (phase === "wrapping-eth" || weth.isWrapping)
+      return t("trade.fillModal.button.wrappingEth");
     if (phase === "approving-erc20" || takerStatus.isApproving)
       return t("trade.fillModal.button.approving").replace("{symbol}", youPaySym);
     if (phase === "awaiting-permit-sig" || signing)
@@ -561,6 +603,14 @@ export function FillModal({
   const buttonAction =
     phase === "error"
       ? handleClose
+      : needsWrap
+      ? () => {
+          // Reset any previous wrap result BEFORE firing the new deposit so
+          // the auto-advance effect can't see a stale isWrapConfirmed=true.
+          weth.resetWrap();
+          weth.wrap(wethShortfall);
+          setPhase("wrapping-eth");
+        }
       : needsErc20Approval
       ? () => {
           setPhase("approving-erc20");
@@ -586,12 +636,14 @@ export function FillModal({
     // "error" phase the button repurposes itself into "close & retry",
     // so we don't block that recovery path on the checkbox.
     (!termsAgreed && phase !== "error") ||
+    phase === "wrapping-eth" ||
     phase === "awaiting-permit-sig" ||
     phase === "submitting-tx" ||
     phase === "confirming-tx" ||
     signing ||
     writeTx.isPending ||
     writeReceipt.isLoading ||
+    weth.isWrapping ||
     takerStatus.isApproving;
 
   // Wrap parent close so dismissing the modal always clears consent. The

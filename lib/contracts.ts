@@ -25,9 +25,20 @@ import type { Address } from "viem";
  * against domain version "7" that V5 r6 Sepolia can't verify, and (b)
  * letting FillModal hammer `previewFee` against a V5 contract that has no
  * such selector.
+ *
+ * SDT/WETH test market (2026-07-03): a FRESH ScentDexV6 (domain "7") comes
+ * back to Sepolia for the /sdttest listing rehearsal. Its address is
+ * env-gated — when NEXT_PUBLIC_SDTTEST_DEX_ADDRESS is unset (the default
+ * everywhere except the sdttest deployment window) the map is exactly the
+ * mainnet-only table above and every Sepolia gate keeps firing.
  */
+const SDTTEST_DEX = process.env.NEXT_PUBLIC_SDTTEST_DEX_ADDRESS as
+  | Address
+  | undefined;
+
 export const SCENTDEX_V5_ADDRESS: Record<number, Address | undefined> = {
   1: "0x9962584c755f943f2c29dF190dA97008db216D16",
+  ...(SDTTEST_DEX ? { 11155111: SDTTEST_DEX } : {}),
 };
 
 /**

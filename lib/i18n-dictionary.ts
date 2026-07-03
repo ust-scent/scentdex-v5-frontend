@@ -219,6 +219,8 @@ export type Dictionary = {
   "trade.placeOrder.approvingStep1": string;
   "trade.placeOrder.approvingStep2": string;
   "trade.placeOrder.approvingErc20": string;
+  "trade.placeOrder.wrappingEth": string;
+  "trade.placeOrder.insufficientEthWeth": string;
   "trade.placeOrder.orderSigned": string;
   "trade.placeOrder.orderPosted": string;
   "trade.placeOrder.orderPlacedHeader": string;
@@ -328,6 +330,7 @@ export type Dictionary = {
   "trade.fillModal.settled": string;
   "trade.fillModal.button.filled": string;
   "trade.fillModal.button.approving": string;
+  "trade.fillModal.button.wrappingEth": string;
   "trade.fillModal.button.signPermit": string;
   "trade.fillModal.button.waitingWallet": string;
   "trade.fillModal.button.confirmingTx": string;
@@ -613,6 +616,8 @@ const en: Dictionary = {
   "trade.placeOrder.approvingStep1": "Approving {symbol} (1/2)…",
   "trade.placeOrder.approvingStep2": "Approving {symbol} (2/2)…",
   "trade.placeOrder.approvingErc20": "Approving {symbol}…",
+  "trade.placeOrder.wrappingEth": "Converting ETH → WETH…",
+  "trade.placeOrder.insufficientEthWeth": "Insufficient ETH + WETH balance",
   "trade.placeOrder.orderSigned": "Order signed. Signature:",
   "trade.placeOrder.orderPosted":
     "Posted to the book. The taker side will see your order within a poll cycle.",
@@ -749,6 +754,7 @@ const en: Dictionary = {
   "trade.fillModal.settled": "Filled — settlement confirmed on-chain.",
   "trade.fillModal.button.filled": "Filled",
   "trade.fillModal.button.approving": "Approving {symbol}…",
+  "trade.fillModal.button.wrappingEth": "Converting ETH → WETH…",
   "trade.fillModal.button.signPermit": "Sign Permit2…",
   "trade.fillModal.button.waitingWallet": "Waiting for wallet…",
   "trade.fillModal.button.confirmingTx": "Confirming on-chain…",
@@ -1039,6 +1045,8 @@ const ja: Dictionary = {
   "trade.placeOrder.approvingStep1": "{symbol} を承認中（1/2）…",
   "trade.placeOrder.approvingStep2": "{symbol} を承認中（2/2）…",
   "trade.placeOrder.approvingErc20": "{symbol} を承認中…",
+  "trade.placeOrder.wrappingEth": "ETH → WETH に変換中…",
+  "trade.placeOrder.insufficientEthWeth": "ETH + WETH の残高が不足しています",
   "trade.placeOrder.orderSigned": "署名:",
   "trade.placeOrder.orderPosted":
     "板に投稿しました。次のポーリングでテイカー側にも表示されます。",
@@ -1176,6 +1184,7 @@ const ja: Dictionary = {
   "trade.fillModal.settled": "約定済み — オンチェーンで確定しました。",
   "trade.fillModal.button.filled": "約定済み",
   "trade.fillModal.button.approving": "{symbol} を承認中…",
+  "trade.fillModal.button.wrappingEth": "ETH → WETH に変換中…",
   "trade.fillModal.button.signPermit": "Permit2 に署名…",
   "trade.fillModal.button.waitingWallet": "ウォレット応答待ち…",
   "trade.fillModal.button.confirmingTx": "オンチェーン確認中…",

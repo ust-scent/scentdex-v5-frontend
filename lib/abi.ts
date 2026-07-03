@@ -325,3 +325,26 @@ export const MOCK_ERC20_ABI = [
     outputs: [],
   },
 ] as const;
+
+/**
+ * WETH9 — canonical Wrapped Ether (same bytecode family on mainnet and
+ * Sepolia). Only the two conversion entry points the auto-wrap UX needs:
+ * `deposit()` (payable, ETH → WETH 1:1) and `withdraw(wad)` (WETH → ETH).
+ * Balance/allowance/approve go through the shared ERC20_ABI.
+ */
+export const WETH9_ABI = [
+  {
+    type: "function",
+    name: "deposit",
+    stateMutability: "payable",
+    inputs: [],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "withdraw",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "wad", type: "uint256" }],
+    outputs: [],
+  },
+] as const;

@@ -1,7 +1,7 @@
 import type { Address } from "viem";
 
 export type Token = {
-  symbol: "SCENT" | "JPYC" | "USDT" | "SDO";
+  symbol: "SCENT" | "JPYC" | "USDT" | "SDO" | "SDT" | "WETH";
   name: string;
   decimals: number;
   /** Per-chain ERC-20 address. Mainnet = production; Sepolia = MockERC20. */
@@ -27,6 +27,10 @@ export type Token = {
  *  - USDT canonical Tether is **6 decimals**, the Sepolia mock matches at 6
  *    so the same Token entry works on both chains
  */
+/** Canonical Sepolia WETH9. Exported for the auto-wrap hook + sdttest page. */
+export const SEPOLIA_WETH9_ADDRESS: Address =
+  "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14";
+
 export const TOKENS: Token[] = [
   {
     symbol: "SCENT",
@@ -68,6 +72,37 @@ export const TOKENS: Token[] = [
       11155111: "0xB402dFBb233b231076609aB766B829336492D99C",
     },
     accentClass: "bg-fuchsia-500",
+  },
+  // ---- SDT/WETH test market (Sepolia only, /sdttest route) -------------
+  // Both tokens deliberately have NO mainnet address: pairsForChain(1) can
+  // never surface them, so the production pair list is untouched. Mainnet
+  // listing is frozen until external audit + legal docs complete.
+  {
+    symbol: "SDT",
+    name: "Seven DAO Token",
+    decimals: 18,
+    addresses: {
+      1: undefined,
+      // MockSDT from the sdttest Sepolia bring-up. Env-gated like the DEX
+      // address so the token simply "doesn't exist" until the deploy lands.
+      11155111: process.env.NEXT_PUBLIC_SDTTEST_SDT_ADDRESS as
+        | Address
+        | undefined,
+    },
+    accentClass: "bg-sky-500",
+  },
+  {
+    symbol: "WETH",
+    name: "Wrapped Ether",
+    decimals: 18,
+    addresses: {
+      1: undefined,
+      // Canonical Sepolia WETH9 (deposit/withdraw) — a real contract, not a
+      // mock, so the /sdttest auto-wrap UX exercises the same bytecode as
+      // mainnet WETH.
+      11155111: SEPOLIA_WETH9_ADDRESS,
+    },
+    accentClass: "bg-indigo-400",
   },
 ];
 
@@ -128,8 +163,19 @@ export const PAIR_CONFIG: Record<number, Record<string, PairFeeConfig>> = {
     "SCENT/USDT": { feeBps: 1000, feeSide: "SCENT" },
     "SDO/USDT": { feeBps: 2000, feeSide: "SDO" },
     "SDO/SCENT": { feeBps: 2000, feeSide: "SDO" },
+    // SDT listing rehearsal (ADR-0008): the SDT SELLER pays 10%, carved in
+    // WETH from their proceeds. Buyers of SDT pay no fee. Must match the
+    // announceSetPair(SDT, WETH, true, SDT, 1000) call in the bring-up script.
+    "SDT/WETH": { feeBps: 1000, feeSide: "SDT" },
   },
 };
+
+/**
+ * The pinned pair for the /sdttest route. Kept OUT of `PAIRS` on purpose —
+ * the default pair list (and therefore PairTabs on /trade) must not change;
+ * the test market is only reachable via its own page.
+ */
+export const SDTTEST_PAIR: Pair = { base: "SDT", quote: "WETH" };
 
 export function pairKey(pair: Pair): string {
   return `${pair.base}/${pair.quote}`;

@@ -24,9 +24,10 @@ import {
   type PermitSingle,
 } from "@/lib/permit2";
 import { useFillEvents } from "@/lib/hooks/useFillEvents";
+import { useWeth } from "@/lib/hooks/useWeth";
 import { TOKENS, feeConfig, type Pair, type Token } from "@/lib/tokens";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { formatUnits, type Hex } from "viem";
+import { formatUnits, parseUnits, type Hex } from "viem";
 import {
   useAccount,
   useChainId,
@@ -75,6 +76,26 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
   // Permit2 needs to be approved for THAT token before any taker can fill.
   const makerToken = side === "sell" ? baseToken : quoteToken;
   const makerStatus = useTokenStatus(makerToken);
+
+  // Auto-wrap (SDT/WETH test market): when the maker pays in WETH, the user
+  // thinks in ETH — if their WETH balance can't cover the order we wrap the
+  // shortfall via WETH9.deposit() as an extra leading tx, then continue the
+  // normal approve→sign chain. Inert on every non-WETH pair (and WETH has no
+  // mainnet address, so mainnet behaviour is untouched).
+  const weth = useWeth();
+  const isWethMaker = makerToken.symbol === "WETH";
+  const neededMakerAmount = useMemo(() => {
+    if (!isWethMaker) return 0n;
+    try {
+      return parseUnits((size || "0") as `${number}`, makerToken.decimals);
+    } catch {
+      return 0n;
+    }
+  }, [isWethMaker, size, makerToken.decimals]);
+  const wethShortfall = isWethMaker ? weth.shortfallFor(neededMakerAmount) : 0n;
+  // True between the wrap click and its receipt; the effect below advances
+  // to approve/sign exactly once.
+  const awaitingWrap = useRef(false);
 
   // Live price hint from on-chain OrderFilled events (round-2). Used as
   // the placeholder in the unit price input so the user has a sane anchor
@@ -167,6 +188,12 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
     reasons.push(t("trade.placeOrder.enterPrice"));
   if (!size || Number(size) <= 0)
     reasons.push(t("trade.placeOrder.enterAmount"));
+  if (
+    isWethMaker &&
+    neededMakerAmount > 0n &&
+    neededMakerAmount > weth.spendable
+  )
+    reasons.push(t("trade.placeOrder.insufficientEthWeth"));
   const canSign = reasons.length === 0;
 
   function proceedToModal() {
@@ -227,8 +254,49 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [makerStatus.isFullyApproved]);
 
+  // Effect: auto-advance after the auto-wrap deposit confirms — continue the
+  // same chain a plain startSign() click would have taken (approve if the
+  // Permit2 leg is missing, otherwise straight to the sign modal).
+  useEffect(() => {
+    if (!awaitingWrap.current) return;
+    if (!weth.isWrapConfirmed) return;
+    awaitingWrap.current = false;
+    void makerStatus.refetchBalance();
+    if (!makerStatus.isErc20Approved) {
+      awaitingApproval.current = true;
+      makerStatus.approve();
+      return;
+    }
+    proceedToModal();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weth.isWrapConfirmed]);
+
+  // Effect: surface a wrap failure (user reject / RPC error) instead of
+  // leaving the button stuck in the wrapping state.
+  useEffect(() => {
+    if (!weth.wrapError || !awaitingWrap.current) return;
+    awaitingWrap.current = false;
+    const msg =
+      weth.wrapError instanceof Error
+        ? weth.wrapError.message
+        : String(weth.wrapError);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLastResult({ ok: false, error: msg.slice(0, 160) });
+    weth.resetWrap();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weth.wrapError]);
+
   function startSign() {
     if (!canSign || !account || !dexAddress) return;
+
+    // Auto-wrap leg (WETH maker side only): top the WETH balance up to the
+    // order size from native ETH before anything else. The effect above
+    // resumes the approve/sign chain once the deposit confirms.
+    if (isWethMaker && wethShortfall > 0n) {
+      awaitingWrap.current = true;
+      weth.wrap(wethShortfall);
+      return;
+    }
 
     // If the wallet → Permit2 leg isn't approved yet, fire that one
     // on-chain transaction first. The effect above watches for it and
@@ -448,7 +516,9 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
         />
 
         <PercentButtons
-          balance={makerStatus.balance}
+          // WETH maker side: the % base is WETH + wrappable ETH (minus a gas
+          // buffer) since auto-wrap tops the difference up at sign time.
+          balance={isWethMaker ? weth.spendable : makerStatus.balance}
           decimals={makerToken.decimals}
           onPick={(v) => setSize(v)}
         />
@@ -566,7 +636,7 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
           )
         ) : null}
 
-        {signing || makerStatus.isApproving ? (
+        {signing || makerStatus.isApproving || weth.isWrapping ? (
           <div
             role="status"
             aria-live="polite"
@@ -584,7 +654,11 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
         <button
           onClick={startSign}
           disabled={
-            !canSign || !termsAgreed || signing || makerStatus.isApproving
+            !canSign ||
+            !termsAgreed ||
+            signing ||
+            makerStatus.isApproving ||
+            weth.isWrapping
           }
           className="mt-2 w-full py-3 rounded-md bg-accent text-bg font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
           title={
@@ -595,6 +669,8 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
         >
           {!canSign
             ? reasons[0]
+            : weth.isWrapping
+            ? t("trade.placeOrder.wrappingEth")
             : makerStatus.approveStep === "approving"
             ? t("trade.placeOrder.approvingErc20").replace(
                 "{symbol}",
