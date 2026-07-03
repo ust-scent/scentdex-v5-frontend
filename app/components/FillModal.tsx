@@ -470,7 +470,7 @@ export function FillModal({
   const needsErc20Approval = !takerStatus.isErc20Approved && Boolean(takerTokenAddr);
 
   // -- Action: auto-wrap (taker pays WETH, balance short) -----------------------
-  const takerIsWeth = takerTokenMeta?.symbol === "WETH";
+  const takerIsWeth = Boolean(takerTokenMeta?.wrapsNative);
   const wethShortfall = takerIsWeth ? weth.shortfallFor(remainingTaker) : 0n;
   const needsWrap = wethShortfall > 0n;
 

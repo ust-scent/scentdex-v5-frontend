@@ -1,13 +1,19 @@
 import type { Address } from "viem";
 
 export type Token = {
-  symbol: "SCENT" | "JPYC" | "USDT" | "SDO" | "SDT" | "WETH";
+  symbol: "SCENT" | "JPYC" | "USDT" | "SDO" | "SDT-TEST" | "WETH-TEST";
   name: string;
   decimals: number;
   /** Per-chain ERC-20 address. Mainnet = production; Sepolia = MockERC20. */
   addresses: Record<number, Address | undefined>;
   /** Tailwind class for the avatar circle in Permit2 cards / lists. */
   accentClass: string;
+  /**
+   * True for WETH9-style wrapped-native tokens (deposit/withdraw). Drives
+   * the auto-wrap UX: PlaceOrder / FillModal insert an ETH→token deposit
+   * leg when the user's balance is short.
+   */
+  wrapsNative?: boolean;
 };
 
 /**
@@ -27,10 +33,6 @@ export type Token = {
  *  - USDT canonical Tether is **6 decimals**, the Sepolia mock matches at 6
  *    so the same Token entry works on both chains
  */
-/** Canonical Sepolia WETH9. Exported for the auto-wrap hook + sdttest page. */
-export const SEPOLIA_WETH9_ADDRESS: Address =
-  "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14";
-
 export const TOKENS: Token[] = [
   {
     symbol: "SCENT",
@@ -78,8 +80,8 @@ export const TOKENS: Token[] = [
   // never surface them, so the production pair list is untouched. Mainnet
   // listing is frozen until external audit + legal docs complete.
   {
-    symbol: "SDT",
-    name: "Seven DAO Token",
+    symbol: "SDT-TEST",
+    name: "Seven DAO Token (TEST)",
     decimals: 18,
     addresses: {
       1: undefined,
@@ -92,17 +94,21 @@ export const TOKENS: Token[] = [
     accentClass: "bg-sky-500",
   },
   {
-    symbol: "WETH",
-    name: "Wrapped Ether",
+    symbol: "WETH-TEST",
+    name: "Wrapped Ether (TEST)",
     decimals: 18,
     addresses: {
       1: undefined,
-      // Canonical Sepolia WETH9 (deposit/withdraw) — a real contract, not a
-      // mock, so the /sdttest auto-wrap UX exercises the same bytecode as
-      // mainnet WETH.
-      11155111: SEPOLIA_WETH9_ADDRESS,
+      // MockWETH from the sdttest Sepolia bring-up: WETH9-compatible
+      // deposit/withdraw (auto-wrap UX unchanged) plus an open faucet mint
+      // so test balances aren't capped by scarce Sepolia ETH. Env-gated
+      // like the DEX + SDT addresses.
+      11155111: process.env.NEXT_PUBLIC_SDTTEST_WETH_ADDRESS as
+        | Address
+        | undefined,
     },
     accentClass: "bg-indigo-400",
+    wrapsNative: true,
   },
 ];
 
@@ -166,7 +172,7 @@ export const PAIR_CONFIG: Record<number, Record<string, PairFeeConfig>> = {
     // SDT listing rehearsal (ADR-0008): the SDT SELLER pays 10%, carved in
     // WETH from their proceeds. Buyers of SDT pay no fee. Must match the
     // announceSetPair(SDT, WETH, true, SDT, 1000) call in the bring-up script.
-    "SDT/WETH": { feeBps: 1000, feeSide: "SDT" },
+    "SDT-TEST/WETH-TEST": { feeBps: 1000, feeSide: "SDT-TEST" },
   },
 };
 
@@ -175,7 +181,7 @@ export const PAIR_CONFIG: Record<number, Record<string, PairFeeConfig>> = {
  * the default pair list (and therefore PairTabs on /trade) must not change;
  * the test market is only reachable via its own page.
  */
-export const SDTTEST_PAIR: Pair = { base: "SDT", quote: "WETH" };
+export const SDTTEST_PAIR: Pair = { base: "SDT-TEST", quote: "WETH-TEST" };
 
 export function pairKey(pair: Pair): string {
   return `${pair.base}/${pair.quote}`;

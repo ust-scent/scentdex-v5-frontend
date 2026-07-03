@@ -83,7 +83,7 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
   // normal approve→sign chain. Inert on every non-WETH pair (and WETH has no
   // mainnet address, so mainnet behaviour is untouched).
   const weth = useWeth();
-  const isWethMaker = makerToken.symbol === "WETH";
+  const isWethMaker = Boolean(makerToken.wrapsNative);
   const neededMakerAmount = useMemo(() => {
     if (!isWethMaker) return 0n;
     try {

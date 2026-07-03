@@ -31,7 +31,8 @@ import { SDTTEST_PAIR, TOKENS } from "@/lib/tokens";
 
 const DEX_LIVE = Boolean(process.env.NEXT_PUBLIC_SDTTEST_DEX_ADDRESS);
 const SDT_LIVE = Boolean(process.env.NEXT_PUBLIC_SDTTEST_SDT_ADDRESS);
-const MARKET_LIVE = DEX_LIVE && SDT_LIVE;
+const WETH_LIVE = Boolean(process.env.NEXT_PUBLIC_SDTTEST_WETH_ADDRESS);
+const MARKET_LIVE = DEX_LIVE && SDT_LIVE && WETH_LIVE;
 
 export function SdtTestClient({
   initialLocale,
@@ -74,14 +75,14 @@ function TestnetBanner() {
       <div className="rounded-md border-2 border-amber-500/50 bg-amber-500/[0.08] px-4 py-3">
         <div className="flex items-center gap-2 text-amber-300 text-[13px] font-semibold uppercase tracking-[0.14em]">
           <span aria-hidden="true">⚠</span>
-          <span>Sepolia testnet — SDT/WETH test market</span>
+          <span>Sepolia testnet — SDT-TEST/WETH-TEST market</span>
         </div>
         <p className="text-[12px] text-fg-dim mt-1 leading-relaxed">
           Test environment for the SDT listing. Every token here is a
-          valueless testnet asset; nothing on this page trades real funds.
-          The SDT seller pays a 10% protocol fee, carved from their WETH
-          proceeds. You trade in ETH — wrapping to WETH happens
-          automatically when needed.
+          valueless testnet asset (hence the -TEST names); nothing on this
+          page trades real funds. The SDT-TEST seller pays a 10% protocol
+          fee, carved from their WETH-TEST proceeds. You trade in ETH —
+          wrapping to WETH-TEST happens automatically when needed.
           {wrongChain ? (
             <span className="text-amber-300">
               {" "}
@@ -103,9 +104,9 @@ function NotLiveNotice() {
           Test market not live yet
         </div>
         <p className="text-[13px] text-fg-dim leading-relaxed max-w-[420px]">
-          The SDT/WETH Sepolia contracts have not been deployed (or this
-          build is missing their addresses). Check back once the bring-up
-          completes.
+          The SDT-TEST/WETH-TEST Sepolia contracts have not been deployed
+          (or this build is missing their addresses). Check back once the
+          bring-up completes.
         </p>
       </div>
     </div>
@@ -125,10 +126,18 @@ function EthWethBar() {
   const chainId = useChainId();
   const weth = useWeth();
   const sdtToken = useMemo(
-    () => TOKENS.find((t) => t.symbol === "SDT")!,
+    () => TOKENS.find((t) => t.symbol === "SDT-TEST")!,
     [],
   );
   const sdtStatus = useTokenStatus(sdtToken);
+  const wethToken = useMemo(
+    () => TOKENS.find((t) => t.symbol === "WETH-TEST")!,
+    [],
+  );
+  // MockWETH exposes the same open mint() as MockERC20, so the standard
+  // token-status faucet works for WETH-TEST too (no ETH-wrapping needed
+  // to obtain test liquidity).
+  const wethMintStatus = useTokenStatus(wethToken);
   const onSepolia = chainId === SEPOLIA_CHAIN_ID;
 
   if (!isConnected || !onSepolia) return null;
@@ -137,22 +146,29 @@ function EthWethBar() {
     <div className="px-3 sm:px-6 pt-3">
       <div className="rounded-md border border-line bg-white/[0.02] px-4 py-3 flex flex-wrap items-center gap-x-8 gap-y-2">
         <BalanceItem label="ETH" value={fmt(weth.ethBalance)} />
-        <BalanceItem label="WETH" value={fmt(weth.wethBalance)} />
-        <BalanceItem label="SDT" value={fmt(sdtStatus.balance)} />
+        <BalanceItem label="WETH-TEST" value={fmt(weth.wethBalance)} />
+        <BalanceItem label="SDT-TEST" value={fmt(sdtStatus.balance)} />
         <div className="flex items-center gap-2 ml-auto">
           <button
             onClick={() => weth.unwrap(weth.wethBalance)}
             disabled={weth.wethBalance === 0n || weth.isUnwrapping}
             className="px-3 py-1.5 rounded-md border border-line text-[12px] text-fg-dim hover:text-fg hover:border-line-strong disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {weth.isUnwrapping ? "Unwrapping…" : "Unwrap WETH → ETH"}
+            {weth.isUnwrapping ? "Unwrapping…" : "Unwrap WETH-TEST → ETH"}
           </button>
           <button
             onClick={() => sdtStatus.mintDefault()}
             disabled={sdtStatus.isMinting}
             className="px-3 py-1.5 rounded-md border border-line text-[12px] text-fg-dim hover:text-fg hover:border-line-strong disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {sdtStatus.isMinting ? "Minting…" : "Faucet: mint 1,000 SDT"}
+            {sdtStatus.isMinting ? "Minting…" : "Faucet: 1,000 SDT-TEST"}
+          </button>
+          <button
+            onClick={() => wethMintStatus.mintDefault()}
+            disabled={wethMintStatus.isMinting}
+            className="px-3 py-1.5 rounded-md border border-line text-[12px] text-fg-dim hover:text-fg hover:border-line-strong disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {wethMintStatus.isMinting ? "Minting…" : "Faucet: 1,000 WETH-TEST"}
           </button>
         </div>
       </div>

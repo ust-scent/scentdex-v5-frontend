@@ -37,7 +37,7 @@ export const WRAP_GAS_BUFFER = 10n ** 16n; // 0.01 ETH
 export function useWeth() {
   const { address: account, isConnected } = useAccount();
   const chainId = useChainId();
-  const wethAddress = TOKENS.find((t) => t.symbol === "WETH")?.addresses[
+  const wethAddress = TOKENS.find((t) => t.wrapsNative)?.addresses[
     chainId
   ];
   const enabled = Boolean(isConnected && account && wethAddress);
