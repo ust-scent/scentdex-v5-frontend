@@ -188,10 +188,18 @@ export function pairKey(pair: Pair): string {
 }
 
 export function feeConfig(pair: Pair, chainId: number): PairFeeConfig {
-  return (
-    PAIR_CONFIG[chainId]?.[pairKey(pair)] ?? {
-      feeBps: 30,
-      feeSide: pair.base,
-    }
-  );
+  const key = pairKey(pair);
+  // Exact (chain, pair) hit — the normal path.
+  const onChain = PAIR_CONFIG[chainId]?.[key];
+  if (onChain) return onChain;
+  // Fall back to the same pair on ANY configured chain before the 30bps
+  // default. This keeps the fee preview correct for a pair that is only
+  // configured on one chain (e.g. the Sepolia-only SDT-TEST/WETH-TEST test
+  // market) even when useChainId() reports the wagmi default chain because
+  // no wallet is connected yet. Production pairs are configured identically
+  // across chains, so this never changes their displayed fee.
+  for (const chainCfg of Object.values(PAIR_CONFIG)) {
+    if (chainCfg[key]) return chainCfg[key];
+  }
+  return { feeBps: 30, feeSide: pair.base };
 }
