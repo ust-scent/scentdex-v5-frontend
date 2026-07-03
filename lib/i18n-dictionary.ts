@@ -367,6 +367,36 @@ export type Dictionary = {
   "cookie.banner.accept": string;
   "cookie.banner.rejectNonEssential": string;
   "cookie.banner.learnMore": string;
+
+  // Onboarding banner (above OrderBook on /trade)
+  "onboarding.banner.text": string;
+  "onboarding.banner.cta": string;
+  "onboarding.banner.dismissAria": string;
+
+  // Active Offers section (below OrderBook on /trade)
+  "activeOffers.heading": string;
+  "activeOffers.subtext": string;
+  "activeOffers.badge.sell": string;
+  "activeOffers.badge.buy": string;
+  "activeOffers.label.maker": string;
+  "activeOffers.label.filled": string;
+  "activeOffers.label.ago_just_now": string;
+  "activeOffers.label.ago_minutes": string;
+  "activeOffers.label.ago_hours": string;
+  "activeOffers.label.ago_days": string;
+  "activeOffers.button.take": string;
+  "activeOffers.button.loading": string;
+  "activeOffers.disabled.own": string;
+  "activeOffers.disabled.balance": string;
+  "activeOffers.empty.title": string;
+  "activeOffers.empty.body": string;
+
+  // FAQ page
+  "faq.page.title": string;
+  "faq.notFilled.title": string;
+  "faq.notFilled.body": string;
+  "faq.howItWorks.title": string;
+  "faq.howItWorks.body": string;
 };
 
 const en: Dictionary = {
@@ -794,6 +824,38 @@ const en: Dictionary = {
   "cookie.banner.accept": "Accept",
   "cookie.banner.rejectNonEssential": "Essential only",
   "cookie.banner.learnMore": "Learn more",
+
+  "onboarding.banner.text":
+    "ScentDEX is a peer-to-peer marketplace — orders fill when someone takes them, not automatically.",
+  "onboarding.banner.cta": "Learn more →",
+  "onboarding.banner.dismissAria": "Dismiss banner",
+
+  "activeOffers.heading": "Active Offers",
+  "activeOffers.subtext":
+    "Open orders waiting for a counterparty. Click any offer to take it.",
+  "activeOffers.badge.sell": "SELL",
+  "activeOffers.badge.buy": "BUY",
+  "activeOffers.label.maker": "Maker:",
+  "activeOffers.label.filled": "Filled: {pct}%",
+  "activeOffers.label.ago_just_now": "just now",
+  "activeOffers.label.ago_minutes": "{n}m ago",
+  "activeOffers.label.ago_hours": "{n}h ago",
+  "activeOffers.label.ago_days": "{n}d ago",
+  "activeOffers.button.take": "Take this offer",
+  "activeOffers.button.loading": "Loading…",
+  "activeOffers.disabled.own": "Your offer — can't take your own",
+  "activeOffers.disabled.balance": "Insufficient {token} to take this",
+  "activeOffers.empty.title": "No active offers yet.",
+  "activeOffers.empty.body":
+    "Place an order to start the market, or check back in a moment.",
+
+  "faq.page.title": "FAQ",
+  "faq.notFilled.title": "Why isn't my order filled?",
+  "faq.notFilled.body":
+    "Your order sits on ScentDEX as a *limit order* — it waits on the book until another trader (a \"taker\") decides to fill it. Nothing fills it automatically. This is by design: ScentDEX is a peer-to-peer marketplace, not a centralized matching engine.\n\n**Tips to get filled faster:**\n\n- **Tighten your price.** The closer your price is to the current best ask/bid, the more attractive your order looks to takers.\n- **Be patient.** Orders can sit for minutes or hours before a counterparty arrives, especially during low-volume windows.\n- **Browse Active Offers.** If you're willing to take an existing offer instead of placing one, scroll down to *Active Offers* and tap one — your trade settles immediately on-chain.\n\nIf your order has been on the book for a long time and the market has moved past it, you can always cancel it and replace it at a new price. Cancellation is on-chain and gas-paid by you.",
+  "faq.howItWorks.title": "How does ScentDEX work? (vs centralized exchanges)",
+  "faq.howItWorks.body":
+    "ScentDEX is a **peer-to-peer limit-order marketplace**. Every offer you see on the book or in Active Offers was posted by another user. When you take an offer, the trade settles directly on-chain — no broker, no custodian, no matching engine in the middle.\n\n**Quick comparison:**\n\n|                              | Centralized exchange (CEX) | ScentDEX                  |\n|------------------------------|----------------------------|---------------------------|\n| Who matches orders?          | Exchange's matching engine | You do — by taking offers |\n| Where do funds sit?          | In the exchange's custody  | In your wallet            |\n| What does the maker pay?     | Trading fees on fill       | Zero gas to post an order |\n| What does the taker pay?     | Trading fees on fill       | Gas + fee on fill         |\n| Where are orders stored?     | Exchange's database        | Off-chain, signed by maker; settled on-chain |\n| Can the operator censor you? | Yes                        | No — settlement is on-chain |\n\n**What this means in practice:**\n\n- Posting an order is free (no gas). It's a signed message, not a transaction.\n- Taking an order requires a wallet signature and gas, because settlement happens on-chain.\n- Your assets never leave your wallet until the moment a trade settles.\n- ScentDEX itself never holds your funds.\n\nIf you're used to a CEX, the main mindset shift is this: **the order book is a list of standing offers, not a queue that fills itself**. To trade right now, take an existing offer. To trade at your own price, post one and wait.",
 };
 
 const ja: Dictionary = {
@@ -1224,6 +1286,38 @@ const ja: Dictionary = {
   "cookie.banner.accept": "同意する",
   "cookie.banner.rejectNonEssential": "必須のみ",
   "cookie.banner.learnMore": "詳細",
+
+  "onboarding.banner.text":
+    "ScentDEX はピアツーピア型（peer-to-peer）のマーケットプレイスです。注文は誰かが取りに来たときに約定し、自動的にはマッチしません。",
+  "onboarding.banner.cta": "詳しく見る →",
+  "onboarding.banner.dismissAria": "バナーを閉じる",
+
+  "activeOffers.heading": "公開中のオファー",
+  "activeOffers.subtext":
+    "取引相手を待っている公開中の注文です。クリックして注文を取りに行ってください。",
+  "activeOffers.badge.sell": "売り",
+  "activeOffers.badge.buy": "買い",
+  "activeOffers.label.maker": "Maker:",
+  "activeOffers.label.filled": "約定済み: {pct}%",
+  "activeOffers.label.ago_just_now": "たった今",
+  "activeOffers.label.ago_minutes": "{n}分前",
+  "activeOffers.label.ago_hours": "{n}時間前",
+  "activeOffers.label.ago_days": "{n}日前",
+  "activeOffers.button.take": "このオファーを取る",
+  "activeOffers.button.loading": "読み込み中…",
+  "activeOffers.disabled.own": "あなたのオファー — 自分の注文は取れません",
+  "activeOffers.disabled.balance": "残高不足 — このオファーを取るには {token} が足りません",
+  "activeOffers.empty.title": "公開中のオファーはまだありません。",
+  "activeOffers.empty.body":
+    "注文を出して市場を立ち上げるか、しばらくしてから再度ご確認ください。",
+
+  "faq.page.title": "よくある質問",
+  "faq.notFilled.title": "注文が約定しないのはなぜですか?",
+  "faq.notFilled.body":
+    "あなたの注文は ScentDEX に *指値注文（limit order）* として置かれ、別のトレーダー（「taker」）が約定させるまで板に待機します。自動的に約定することはありません。これは仕様です: ScentDEX はピアツーピア型（peer-to-peer）のマーケットプレイスであり、中央集権的なマッチングエンジンではありません。\n\n**早く約定させるためのヒント:**\n\n- **価格を引き締める。** 現在の最良アスク／最良ビッド（best ask/bid）に近い価格ほど、taker にとって魅力的に見えます。\n- **待つ。** 出来高が少ない時間帯は特に、取引相手が現れるまで数分から数時間かかることがあります。\n- **Active Offers を見る。** 自分で新規に注文を出すのではなく、既存のオファーを取りに行きたい場合は、画面下の *Active Offers* までスクロールしてカードをタップしてください。トレードはオンチェーン（on-chain）で即時に決済されます。\n\n注文が長時間板に残ったまま市場価格が乖離してしまった場合、いつでもキャンセルして新しい価格で出し直せます。キャンセルはオンチェーンで行われ、ガス代はあなたが負担します。",
+  "faq.howItWorks.title": "ScentDEX の仕組みは?（中央集権型取引所との違い）",
+  "faq.howItWorks.body":
+    "ScentDEX は **ピアツーピア型（peer-to-peer）の指値注文マーケットプレイス** です。板や Active Offers に表示されているオファーは、すべて他のユーザーが出したものです。あなたがオファーを取ると、トレードはオンチェーン（on-chain）で直接決済されます — 仲介業者も、カストディアンも、間に立つマッチングエンジンも存在しません。\n\n**簡単な比較:**\n\n|                              | 中央集権型取引所（CEX）            | ScentDEX                                       |\n|------------------------------|-----------------------------------|------------------------------------------------|\n| 注文を誰が約定させるか?           | 取引所のマッチングエンジン            | あなた自身 — オファーを取ることで約定          |\n| 資金はどこにあるか?               | 取引所のカストディ                   | あなたのウォレットの中                          |\n| メーカー（maker）が支払うもの       | 約定時の取引手数料                   | 注文を出すこと自体は無料（ガス代も不要）         |\n| テイカー（taker）が支払うもの       | 約定時の取引手数料                   | ガス代 + 約定時の手数料                          |\n| 注文はどこに保存されるか?          | 取引所のデータベース                 | オフチェーン（maker が署名）、決済はオンチェーン |\n| 運営は検閲できるか?               | はい                                | いいえ — 決済はオンチェーンで行われる            |\n\n**実際にはどういうことか:**\n\n- 注文を出すのは無料です（ガス代不要）。これはトランザクションではなく、署名されたメッセージです。\n- 注文を取るにはウォレット署名とガス代が必要です。決済がオンチェーンで行われるためです。\n- 資産はトレードが決済される瞬間までウォレットを離れません。\n- ScentDEX 自身は資金を一切預かりません。\n\nCEX に慣れている方は、ここが一番大きな考え方の違いです: **板は「待機中のオファーの一覧」であって、「自動で約定するキュー」ではありません**。今すぐトレードしたければ、既存のオファーを取ってください。自分の価格で取引したければ、注文を出して待ちます。",
 };
 
 // Stub other locales by reusing English. Full translations land in subsequent passes.

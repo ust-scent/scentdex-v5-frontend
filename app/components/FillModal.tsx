@@ -519,51 +519,98 @@ export function FillModal({
     // 2) fillOrder() on-chain.
     const makerPermitReified = reifyPermitSingle(order.permitSingle!);
 
+    const fillArgs = [
+      {
+        maker: order.order.maker,
+        makerToken: order.order.makerToken,
+        takerToken: order.order.takerToken,
+        makerAmount: BigInt(order.order.makerAmount),
+        takerAmount: BigInt(order.order.takerAmount),
+        expiry: BigInt(order.order.expiry),
+        nonce: BigInt(order.order.nonce),
+        salt: order.order.salt,
+        feeSide: order.order.feeSide,
+        feeBps: order.order.feeBps,
+      },
+      order.signature,
+      remainingMaker,
+      {
+        details: {
+          token: takerPermit.details.token,
+          amount: takerPermit.details.amount,
+          expiration: takerPermit.details.expiration,
+          nonce: takerPermit.details.nonce,
+        },
+        spender: takerPermit.spender,
+        sigDeadline: takerPermit.sigDeadline,
+      },
+      takerPermitSig,
+      {
+        details: {
+          token: makerPermitReified.details.token,
+          amount: makerPermitReified.details.amount,
+          expiration: makerPermitReified.details.expiration,
+          nonce: makerPermitReified.details.nonce,
+        },
+        spender: makerPermitReified.spender,
+        sigDeadline: makerPermitReified.sigDeadline,
+      },
+      order.permitSignature as Hex,
+    ] as const;
+
     try {
       setPhase("submitting-tx");
-      writeTx.writeContract({
-        address: dexAddress,
-        abi: SCENTDEX_V5_ABI,
-        functionName: "fillOrder",
-        args: [
-          {
-            maker: order.order.maker,
-            makerToken: order.order.makerToken,
-            takerToken: order.order.takerToken,
-            makerAmount: BigInt(order.order.makerAmount),
-            takerAmount: BigInt(order.order.takerAmount),
-            expiry: BigInt(order.order.expiry),
-            nonce: BigInt(order.order.nonce),
-            salt: order.order.salt,
-            feeSide: order.order.feeSide,
-            feeBps: order.order.feeBps,
-          },
-          order.signature,
-          remainingMaker,
-          {
-            details: {
-              token: takerPermit.details.token,
-              amount: takerPermit.details.amount,
-              expiration: takerPermit.details.expiration,
-              nonce: takerPermit.details.nonce,
-            },
-            spender: takerPermit.spender,
-            sigDeadline: takerPermit.sigDeadline,
-          },
-          takerPermitSig,
-          {
-            details: {
-              token: makerPermitReified.details.token,
-              amount: makerPermitReified.details.amount,
-              expiration: makerPermitReified.details.expiration,
-              nonce: makerPermitReified.details.nonce,
-            },
-            spender: makerPermitReified.spender,
-            sigDeadline: makerPermitReified.sigDeadline,
-          },
-          order.permitSignature as Hex,
-        ],
-      });
+
+      // Preflight on-chain simulation + gas estimation. wagmi's writeContract
+      // action does not auto-simulate, so without this gate the failing
+      // eth_estimateGas happens *inside* MetaMask, which then falls back to
+      // the block gas limit (~21M) and quotes the taker an absurd fee for a
+      // tx that would just revert.
+      //
+      // We also explicitly pass `gas` to writeContract below using the
+      // viem estimate, which short-circuits MetaMask's own eth_estimateGas
+      // entirely. That closes the residual case where our simulate passes
+      // but the wallet's RPC sees a slightly different mempool/block state
+      // and still falls back to the block gas limit.
+      if (publicClient && account) {
+        const [, gasEstimate] = await Promise.all([
+          publicClient.simulateContract({
+            account,
+            address: dexAddress,
+            abi: SCENTDEX_V5_ABI,
+            functionName: "fillOrder",
+            args: fillArgs,
+          }),
+          publicClient.estimateContractGas({
+            account,
+            address: dexAddress,
+            abi: SCENTDEX_V5_ABI,
+            functionName: "fillOrder",
+            args: fillArgs,
+          }),
+        ]);
+        // 20% headroom over the live estimate. fillOrder is ~200-500K in
+        // practice; the hard cap is a defence-in-depth backstop so even a
+        // runaway estimate can never quote a block-gas-limit fee again.
+        const GAS_CAP = 1_500_000n;
+        const gasWithBuffer = (gasEstimate * 120n) / 100n;
+        const gas = gasWithBuffer > GAS_CAP ? GAS_CAP : gasWithBuffer;
+
+        writeTx.writeContract({
+          address: dexAddress,
+          abi: SCENTDEX_V5_ABI,
+          functionName: "fillOrder",
+          args: fillArgs,
+          gas,
+        });
+      } else {
+        writeTx.writeContract({
+          address: dexAddress,
+          abi: SCENTDEX_V5_ABI,
+          functionName: "fillOrder",
+          args: fillArgs,
+        });
+      }
     } catch (e) {
       setPhase("error");
       setError(parseFillError(e, t));
