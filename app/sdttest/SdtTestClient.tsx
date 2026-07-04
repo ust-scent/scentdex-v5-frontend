@@ -13,7 +13,7 @@ import { SEPOLIA_CHAIN_ID } from "@/lib/contracts";
 import { useTokenStatus } from "@/lib/hooks/useTokenStatus";
 import { useWeth } from "@/lib/hooks/useWeth";
 import { type SupportedLocale } from "@/lib/i18n";
-import { LocaleProvider } from "@/lib/locale-context";
+import { LocaleProvider, useTranslator } from "@/lib/locale-context";
 import { SDTTEST_PAIR, symbolLabel, TOKENS } from "@/lib/tokens";
 
 /**
@@ -90,6 +90,7 @@ function NotLiveNotice() {
  *   sell side immediately.
  */
 function EthWethBar() {
+  const t = useTranslator();
   const { isConnected } = useAccount();
   const chainId = useChainId();
   const weth = useWeth();
@@ -116,11 +117,8 @@ function EthWethBar() {
       <div className="rounded-md border border-indigo-400/30 bg-indigo-400/[0.06] px-4 py-2.5 flex items-start gap-2">
         <span aria-hidden="true" className="text-indigo-300 text-[13px] mt-[1px]">ⓘ</span>
         <p className="text-[12px] text-fg-dim leading-relaxed">
-          <span className="text-fg">ETH and WETH（ETH）are the same asset, 1:1.</span>{" "}
-          Just hold ETH — when you place an order it is wrapped to WETH
-          automatically, so you never need to get WETH yourself. Any WETH you
-          receive can be turned back into ETH in one click with{" "}
-          <span className="text-fg">Unwrap</span>.
+          <span className="text-fg">{t("sdttest.ethWeth.lead")}</span>{" "}
+          {t("sdttest.ethWeth.body")}
         </p>
       </div>
       <div className="rounded-md border border-line bg-white/[0.02] px-4 py-3 flex flex-wrap items-center gap-x-8 gap-y-2">
@@ -133,21 +131,21 @@ function EthWethBar() {
             disabled={weth.wethBalance === 0n || weth.isUnwrapping}
             className="px-3 py-1.5 rounded-md border border-line text-[12px] text-fg-dim hover:text-fg hover:border-line-strong disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {weth.isUnwrapping ? "Unwrapping…" : "Unwrap WETH → ETH"}
+            {weth.isUnwrapping ? t("sdttest.unwrapping") : t("sdttest.unwrap")}
           </button>
           <button
             onClick={() => sdtStatus.mintDefault()}
             disabled={sdtStatus.isMinting}
             className="px-3 py-1.5 rounded-md border border-line text-[12px] text-fg-dim hover:text-fg hover:border-line-strong disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {sdtStatus.isMinting ? "Minting…" : "Faucet: 1,000 SDT"}
+            {sdtStatus.isMinting ? t("sdttest.faucet.minting") : t("sdttest.faucet.sdt")}
           </button>
           <button
             onClick={() => wethMintStatus.mintDefault()}
             disabled={wethMintStatus.isMinting}
             className="px-3 py-1.5 rounded-md border border-line text-[12px] text-fg-dim hover:text-fg hover:border-line-strong disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {wethMintStatus.isMinting ? "Minting…" : "Faucet: 1,000 WETH"}
+            {wethMintStatus.isMinting ? t("sdttest.faucet.minting") : t("sdttest.faucet.weth")}
           </button>
         </div>
       </div>

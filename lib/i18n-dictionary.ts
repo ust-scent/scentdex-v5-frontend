@@ -182,6 +182,14 @@ export type Dictionary = {
 
   // Trade page — PlaceOrder
   "trade.placeOrder.title": string;
+  // /sdttest ETH↔WETH explainer + faucet/unwrap buttons
+  "sdttest.ethWeth.lead": string;
+  "sdttest.ethWeth.body": string;
+  "sdttest.faucet.sdt": string;
+  "sdttest.faucet.weth": string;
+  "sdttest.faucet.minting": string;
+  "sdttest.unwrap": string;
+  "sdttest.unwrapping": string;
   "trade.placeOrder.price": string;
   "trade.placeOrder.amount": string;
   "trade.placeOrder.expires": string;
@@ -607,6 +615,13 @@ const en: Dictionary = {
 
   // Trade page — PlaceOrder
   "trade.placeOrder.title": "Place Order",
+  "sdttest.ethWeth.lead": "ETH and WETH（ETH）are the same asset, 1:1.",
+  "sdttest.ethWeth.body": "Just hold ETH — when you place an order it is wrapped to WETH automatically, so you never need to get WETH yourself. Any WETH you receive can be turned back into ETH in one click with Unwrap.",
+  "sdttest.faucet.sdt": "Faucet: 1,000 SDT",
+  "sdttest.faucet.weth": "Faucet: 1,000 WETH",
+  "sdttest.faucet.minting": "Minting…",
+  "sdttest.unwrap": "Unwrap WETH → ETH",
+  "sdttest.unwrapping": "Unwrapping…",
   "trade.placeOrder.price": "Price",
   "trade.placeOrder.amount": "Amount",
   "trade.placeOrder.expires": "Expires after",
@@ -1070,6 +1085,13 @@ const ja: Dictionary = {
 
   // Trade page — PlaceOrder
   "trade.placeOrder.title": "注文を出す",
+  "sdttest.ethWeth.lead": "ETH と WETH（ETH）は同じ資産で、価値は1:1です。",
+  "sdttest.ethWeth.body": "ETH を持っているだけでOK。注文するときに自動で WETH に変換されるので、自分で WETH を用意する必要はありません。受け取った WETH は「Unwrap」ボタンのワンクリックで ETH に戻せます。",
+  "sdttest.faucet.sdt": "SDT を1,000受け取る",
+  "sdttest.faucet.weth": "WETH を1,000受け取る",
+  "sdttest.faucet.minting": "発行中…",
+  "sdttest.unwrap": "WETH → ETH に戻す",
+  "sdttest.unwrapping": "変換中…",
   "trade.placeOrder.price": "価格",
   "trade.placeOrder.amount": "数量",
   "trade.placeOrder.expires": "有効期限",
