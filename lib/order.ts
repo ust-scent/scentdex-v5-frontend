@@ -291,7 +291,8 @@ function roundDiv(numer: bigint, denom: bigint): bigint {
  * exponent inputs. "0.000005" → { num: 5n, scale: 6 }.
  */
 function toFraction(s: string): { num: bigint; scale: number } | null {
-  const trimmed = s.trim();
+  // Strip grouping commas / whitespace so "1,000,000" parses like "1000000".
+  const trimmed = s.replace(/[,\s]/g, "");
   if (!trimmed || trimmed === "." || !/^\d*\.?\d*$/.test(trimmed)) return null;
   const [intPart = "", fracPart = ""] = trimmed.split(".");
   const digits = intPart + fracPart;

@@ -65,11 +65,19 @@ export const wagmiConfig = getDefaultConfig({
     // Sepolia transport stays defined even when the chain isn't in the
     // RainbowKit picker — useful for any local code path that explicitly
     // targets chainId 11155111.
+    // Ordered by browser reliability. The previous first two (thirdweb,
+    // rpc.sepolia.org) failed from the browser — thirdweb 403s anonymous
+    // browser traffic and rpc.sepolia.org is dead (404) — which stalled
+    // reads and the pre-flight simulateContract, so on-chain writes
+    // (wrap/unwrap/fill) never reached the wallet. All endpoints below
+    // return 200 + `access-control-allow-origin: *` for the prod Origin.
     [sepolia.id]: fallback([
       ...(ALCHEMY_SEPOLIA ? [http(ALCHEMY_SEPOLIA)] : []),
-      http("https://11155111.rpc.thirdweb.com"),
       http("https://ethereum-sepolia-rpc.publicnode.com"),
-      http("https://rpc.sepolia.org"),
+      http("https://sepolia.drpc.org"),
+      http("https://1rpc.io/sepolia"),
+      http("https://sepolia.gateway.tenderly.co"),
+      http("https://11155111.rpc.thirdweb.com"),
     ]),
   },
   ssr: true,

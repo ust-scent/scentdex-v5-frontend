@@ -124,8 +124,10 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
   // -- Form-derived totals ---------------------------------------------
   const cfg = feeConfig(pair, chainId);
   const totals = useMemo(() => {
-    const sizeN = Number(size);
-    const priceN = Number(unitPrice);
+    // Comma / space tolerant: "1,000,000" would otherwise Number() to NaN and
+    // collapse the whole receipt preview to 0.00 (tester D-02).
+    const sizeN = Number(size.replace(/[,\s]/g, ""));
+    const priceN = Number(unitPrice.replace(/[,\s]/g, ""));
     if (
       !Number.isFinite(sizeN) ||
       !Number.isFinite(priceN) ||
@@ -936,7 +938,12 @@ function Row({
 
 function fmtNum(n: number): string {
   if (!Number.isFinite(n) || n === 0) return "0.00";
-  return n.toLocaleString("en-US", { maximumFractionDigits: 6 });
+  // Dust-priced pairs (1 SDT = 0.000005 WETH) produce sub-1 receive/fee
+  // values that six fraction digits round away (tester D-05: 0.00061728 ->
+  // 0.000617). Give small magnitudes more precision; large values keep it
+  // tight (toLocaleString drops trailing zeros so "4.5"/"5" are unaffected).
+  const maxFrac = Math.abs(n) < 1 ? 12 : 6;
+  return n.toLocaleString("en-US", { maximumFractionDigits: maxFrac });
 }
 
 function BalanceStrip({
