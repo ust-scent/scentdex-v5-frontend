@@ -178,6 +178,19 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
     };
   }, [size, unitPrice, side, cfg.feeBps, cfg.feeSide, pair.base, pair.quote, baseToken.symbol, quoteToken.symbol]);
 
+  // Pre-build the order (bigint-exact) so the form can validate before sign:
+  //  - null when inputs are empty/invalid, OR when the amounts round to 0
+  //    (dust order) — buildAmounts returns null for a zero maker/taker amount.
+  //  - the maker-token amount the order actually spends (for the balance gate).
+  const builtOrder = useMemo(() => {
+    const sizeN = Number(size);
+    const priceN = Number(unitPrice);
+    if (!Number.isFinite(sizeN) || !Number.isFinite(priceN) || sizeN <= 0 || priceN <= 0)
+      return null;
+    return buildAmounts({ side, base: baseToken, quote: quoteToken, size, unitPrice, chainId });
+  }, [side, size, unitPrice, chainId, baseToken, quoteToken]);
+  const makerNeeded = builtOrder?.makerAmount ?? 0n;
+
   // -- Reasons we can't sign yet ---------------------------------------
   const reasons: string[] = [];
   if (!isConnected) reasons.push(t("trade.placeOrder.connectWallet"));
@@ -191,13 +204,31 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
     reasons.push(t("trade.placeOrder.enterPrice"));
   if (!size || Number(size) <= 0)
     reasons.push(t("trade.placeOrder.enterAmount"));
-  if (
-    isWethMaker &&
-    neededMakerAmount > 0n &&
-    neededMakerAmount > weth.spendable
-  )
-    reasons.push(t("trade.placeOrder.insufficientEthWeth"));
+  // Amount-too-small: valid positive inputs but the order rounds to a zero
+  // maker/taker amount (dust, e.g. 1e-20 SDT). Would be a degenerate order.
+  else if (unitPrice && Number(unitPrice) > 0 && builtOrder === null)
+    reasons.push(t("trade.placeOrder.amountTooSmall"));
+  // Balance gate. WETH maker side counts WETH + wrappable ETH (auto-wrap);
+  // every other maker token gates on the plain token balance so a maker
+  // cannot sign an order for more than they hold (fails at fill otherwise).
+  if (isWethMaker) {
+    if (neededMakerAmount > 0n && neededMakerAmount > weth.spendable)
+      reasons.push(t("trade.placeOrder.insufficientEthWeth"));
+  } else if (makerNeeded > 0n && makerNeeded > makerStatus.balance) {
+    reasons.push(t("trade.placeOrder.insufficientBalance"));
+  }
   const canSign = reasons.length === 0;
+
+  // Non-blocking warning: the entered unit price is wildly off the last
+  // traded price (fat-finger / crossed book). Does NOT disable signing — the
+  // maker may legitimately post far from market — but flags it so a mis-typed
+  // 1e24 price isn't submitted silently (tester E-07 / E-10).
+  const priceFarFromMarket = (() => {
+    const p = Number(unitPrice);
+    const last = stats.latestPrice;
+    if (!last || last <= 0 || !Number.isFinite(p) || p <= 0) return false;
+    return p > last * 20 || p < last / 20;
+  })();
 
   function proceedToModal() {
     if (!account || !dexAddress) return;
@@ -515,7 +546,7 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
           baseSymbol={symbolLabel(pair.base)}
           quoteSymbol={symbolLabel(pair.quote)}
           value={size}
-          onChange={setSize}
+          onChange={(v) => { setSize(v); if (lastResult) setLastResult(null); }}
         />
 
         <PercentButtons
@@ -523,7 +554,7 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
           // buffer) since auto-wrap tops the difference up at sign time.
           balance={isWethMaker ? weth.spendable : makerStatus.balance}
           decimals={makerToken.decimals}
-          onPick={(v) => setSize(v)}
+          onPick={(v) => { setSize(v); if (lastResult) setLastResult(null); }}
         />
 
         <PriceField
@@ -531,9 +562,15 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
           baseSymbol={symbolLabel(pair.base)}
           quoteSymbol={symbolLabel(pair.quote)}
           value={unitPrice}
-          onChange={setUnitPrice}
+          onChange={(v) => { setUnitPrice(v); if (lastResult) setLastResult(null); }}
           marketPriceHint={stats.latestPrice}
         />
+
+        {priceFarFromMarket ? (
+          <div className="mt-1 px-3 py-2 rounded-md border border-amber-500/40 bg-amber-500/[0.06] text-[11px] text-amber-300 leading-relaxed">
+            {t("trade.placeOrder.priceFarFromMarket")}
+          </div>
+        ) : null}
 
         {/*
          * Receipt preview: derived from size + unit price. Sells produce

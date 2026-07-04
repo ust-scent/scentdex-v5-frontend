@@ -229,6 +229,9 @@ export type Dictionary = {
   "trade.placeOrder.approvingErc20": string;
   "trade.placeOrder.wrappingEth": string;
   "trade.placeOrder.insufficientEthWeth": string;
+  "trade.placeOrder.insufficientBalance": string;
+  "trade.placeOrder.amountTooSmall": string;
+  "trade.placeOrder.priceFarFromMarket": string;
   "trade.placeOrder.orderSigned": string;
   "trade.placeOrder.orderPosted": string;
   "trade.placeOrder.orderPlacedHeader": string;
@@ -663,6 +666,9 @@ const en: Dictionary = {
   "trade.placeOrder.approvingErc20": "Approving {symbol}…",
   "trade.placeOrder.wrappingEth": "Converting ETH → WETH…",
   "trade.placeOrder.insufficientEthWeth": "Insufficient ETH + WETH balance",
+  "trade.placeOrder.insufficientBalance": "Insufficient balance",
+  "trade.placeOrder.amountTooSmall": "Amount too small",
+  "trade.placeOrder.priceFarFromMarket": "Heads up: this price is far from the last traded price. Double-check before signing.",
   "trade.placeOrder.orderSigned": "Order signed. Signature:",
   "trade.placeOrder.orderPosted":
     "Posted to the book. The taker side will see your order within a poll cycle.",
@@ -1131,6 +1137,9 @@ const ja: Dictionary = {
   "trade.placeOrder.approvingErc20": "{symbol} を承認中…",
   "trade.placeOrder.wrappingEth": "ETH → WETH に変換中…",
   "trade.placeOrder.insufficientEthWeth": "ETH + WETH の残高が不足しています",
+  "trade.placeOrder.insufficientBalance": "残高が不足しています",
+  "trade.placeOrder.amountTooSmall": "数量が小さすぎます",
+  "trade.placeOrder.priceFarFromMarket": "注意: この価格は直近の約定価格から大きく離れています。署名前に確認してください。",
   "trade.placeOrder.orderSigned": "署名:",
   "trade.placeOrder.orderPosted":
     "板に投稿しました。次のポーリングでテイカー側にも表示されます。",
