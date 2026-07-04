@@ -520,6 +520,47 @@ export function FillModal({
 
     setError(null);
 
+    // Audit C-L1: the fillTaker shown in the modal was computed from the
+    // off-chain book's filled amounts, which can lag if another taker fills
+    // part of this order while the modal is open. Stale values are proven to
+    // never UNDER-permit (ceil-rounded prior fills only shrink the remaining
+    // quota), but they can leave a dust of idle allowance behind. Re-read the
+    // on-chain fill state right before signing so the Permit2 amount matches
+    // the contract's actual pull to the wei; fall back to the (sufficient)
+    // stale value if the read fails.
+    let permitTakerAmount = fillTaker;
+    if (publicClient) {
+      try {
+        const [freshFilledMaker, freshFilledTaker] = (await Promise.all([
+          publicClient.readContract({
+            address: dexAddress,
+            abi: SCENTDEX_V5_ABI,
+            functionName: "filledMakerAmount",
+            args: [order.orderHash],
+          }),
+          publicClient.readContract({
+            address: dexAddress,
+            abi: SCENTDEX_V5_ABI,
+            functionName: "filledTakerAmount",
+            args: [order.orderHash],
+          }),
+        ])) as [bigint, bigint];
+        const fresh = proportionalTakerAmount(
+          fillMaker,
+          makerAmount,
+          takerAmount,
+          freshFilledMaker,
+          freshFilledTaker,
+        );
+        // fresh === 0n means the fill can no longer settle (zero residual /
+        // overfilled) — keep the stale amount and let the pre-flight
+        // simulation surface the concrete revert to the user.
+        if (fresh > 0n) permitTakerAmount = fresh;
+      } catch {
+        // RPC hiccup — stale value is sufficient by construction.
+      }
+    }
+
     // 1) Sign taker PermitSingle (Permit2 → DEX, scoped to this fill).
     const orderExpiry = BigInt(order.order.expiry);
     const takerPermit: PermitSingle = {
@@ -527,7 +568,7 @@ export function FillModal({
         token: order.order.takerToken,
         // Exactly the contract-side payment for this fill size (ceil-rounded
         // partials included) — no idle allowance beyond this fill.
-        amount: fillTaker,
+        amount: permitTakerAmount,
         expiration: Number(orderExpiry),
         nonce: takerStatus.permit2DexNonce,
       },
@@ -1043,6 +1084,12 @@ function computeFill(
     return { fillMaker: null, fillTaker: null, error: null };
 
   const cleaned = fillInput.replace(/[,\s]/g, "");
+  // Audit C-L3: viem's parseUnits ROUNDS excess fraction digits (e.g.
+  // "1.0000005" at 6 decimals → 1000001), so the user would sign for an
+  // amount that differs from what they typed. Reject instead of rounding.
+  const frac = cleaned.split(".")[1];
+  if (frac !== undefined && frac.length > makerDecimals)
+    return { fillMaker: null, fillTaker: null, error: "range" };
   let parsed: bigint;
   try {
     parsed = parseUnits(cleaned, makerDecimals);
@@ -1052,21 +1099,34 @@ function computeFill(
   if (parsed <= 0n || parsed > remainingMaker)
     return { fillMaker: null, fillTaker: null, error: "range" };
 
-  const remainingTakerQuota =
-    takerAmount > filledTaker ? takerAmount - filledTaker : 0n;
-  let fillTaker: bigint;
-  if (filledMaker + parsed === makerAmount) {
-    fillTaker = remainingTakerQuota;
-  } else {
-    const rawCeil = (parsed * takerAmount + makerAmount - 1n) / makerAmount;
-    fillTaker = rawCeil > remainingTakerQuota ? remainingTakerQuota : rawCeil;
-  }
+  const fillTaker = proportionalTakerAmount(
+    parsed,
+    makerAmount,
+    takerAmount,
+    filledMaker,
+    filledTaker,
+  );
   // The contract reverts ZeroResidualTaker on a zero payment leg — surface
   // it as "amount too small" before the taker burns gas discovering it.
   if (fillTaker === 0n)
     return { fillMaker: null, fillTaker: null, error: "tooSmall" };
 
   return { fillMaker: parsed, fillTaker, error: null };
+}
+
+/** Wei-exact mirror of ScentDexV6._proportionalTakerAmount (r6). */
+function proportionalTakerAmount(
+  fillMaker: bigint,
+  makerAmount: bigint,
+  takerAmount: bigint,
+  filledMaker: bigint,
+  filledTaker: bigint,
+): bigint {
+  const remainingTakerQuota =
+    takerAmount > filledTaker ? takerAmount - filledTaker : 0n;
+  if (filledMaker + fillMaker === makerAmount) return remainingTakerQuota;
+  const rawCeil = (fillMaker * takerAmount + makerAmount - 1n) / makerAmount;
+  return rawCeil > remainingTakerQuota ? remainingTakerQuota : rawCeil;
 }
 
 // Silence "unused" lint for the empty-permit constants — kept exported in

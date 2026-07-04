@@ -258,6 +258,13 @@ export const SCENTDEX_V5_ABI = [
   },
   {
     type: "function",
+    name: "filledTakerAmount",
+    stateMutability: "view",
+    inputs: [{ name: "", type: "bytes32" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
     name: "cancelled",
     stateMutability: "view",
     inputs: [{ name: "", type: "bytes32" }],

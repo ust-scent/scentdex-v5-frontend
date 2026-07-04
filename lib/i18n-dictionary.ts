@@ -677,9 +677,9 @@ const en: Dictionary = {
   "trade.placeOrder.amountTooSmall": "Amount too small",
   "trade.placeOrder.priceFarFromMarket": "Heads up: this price is far from the last traded price. Double-check before signing.",
   "trade.placeOrder.crossesBookBuy":
-    "This buy price is at or above the lowest ask ({price}). Your order crosses the book and can be filled immediately at your price.",
+    "This buy price is at or above the lowest resting ask ({price}). Your order crosses the book and can be filled immediately at your price. Based on all resting orders, including any the board currently hides as unfillable.",
   "trade.placeOrder.crossesBookSell":
-    "This sell price is at or below the highest bid ({price}). Your order crosses the book and can be filled immediately at your price.",
+    "This sell price is at or below the highest resting bid ({price}). Your order crosses the book and can be filled immediately at your price. Based on all resting orders, including any the board currently hides as unfillable.",
   "trade.placeOrder.orderSigned": "Order signed. Signature:",
   "trade.placeOrder.orderPosted":
     "Posted to the book. The taker side will see your order within a poll cycle.",
@@ -1160,9 +1160,9 @@ const ja: Dictionary = {
   "trade.placeOrder.amountTooSmall": "数量が小さすぎます",
   "trade.placeOrder.priceFarFromMarket": "注意: この価格は直近の約定価格から大きく離れています。署名前に確認してください。",
   "trade.placeOrder.crossesBookBuy":
-    "この買い価格は最良売り気配（{price}）以上です。板とクロスしており、この価格で即座に約定される可能性があります。",
+    "この買い価格は最良売り気配（{price}）以上です。板とクロスしており、この価格で即座に約定される可能性があります。※板上の全未約定注文（残高不足等で非表示のものを含む）に基づく警告です。",
   "trade.placeOrder.crossesBookSell":
-    "この売り価格は最良買い気配（{price}）以下です。板とクロスしており、この価格で即座に約定される可能性があります。",
+    "この売り価格は最良買い気配（{price}）以下です。板とクロスしており、この価格で即座に約定される可能性があります。※板上の全未約定注文（残高不足等で非表示のものを含む）に基づく警告です。",
   "trade.placeOrder.orderSigned": "署名:",
   "trade.placeOrder.orderPosted":
     "板に投稿しました。次のポーリングでテイカー側にも表示されます。",
