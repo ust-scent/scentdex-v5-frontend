@@ -9,7 +9,8 @@
     "lint": "eslint",
     "legal:split": "node scripts/split-legal-multilingual.mjs",
     "keeper": "node scripts/keeper-bot.mjs",
-    "migrate:keeper": "node scripts/migrate-keeper-flags.mjs"
+    "migrate:keeper": "node scripts/migrate-keeper-flags.mjs",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@rainbow-me/rainbowkit": "^2.2.10",
@@ -26,6 +27,7 @@
     "wagmi": "^2.19.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
