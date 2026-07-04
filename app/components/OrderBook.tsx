@@ -7,7 +7,7 @@ import {
   useMakerStats,
 } from "@/lib/hooks/useMakerStats";
 import { formatPrice } from "@/lib/format-price";
-import { TOKENS, type Pair } from "@/lib/tokens";
+import { TOKENS, symbolLabel, type Pair } from "@/lib/tokens";
 import { useEffect, useMemo, useState } from "react";
 import { formatUnits, type Address, type Hex } from "viem";
 import { useAccount, useChainId } from "wagmi";
@@ -166,13 +166,13 @@ export function OrderBook({ pair }: { pair: Pair }) {
 
         <div className="grid grid-cols-3 px-4 py-2 text-[10px] uppercase tracking-[0.14em] text-fg-faint">
           <div>
-            {t("trade.placeOrder.price")} ({pair.quote})
+            {t("trade.placeOrder.price")} ({symbolLabel(pair.quote)})
           </div>
           <div className="text-right">
-            {t("trade.placeOrder.amount")} ({pair.base})
+            {t("trade.placeOrder.amount")} ({symbolLabel(pair.base)})
           </div>
           <div className="text-right">
-            {t("trade.placeOrder.total")} ({pair.base})
+            {t("trade.placeOrder.total")} ({symbolLabel(pair.base)})
           </div>
         </div>
 

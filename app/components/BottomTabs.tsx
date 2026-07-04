@@ -5,7 +5,7 @@ import { useTokenStatus } from "@/lib/hooks/useTokenStatus";
 import { useOrderFillability } from "@/lib/hooks/useOrderFillability";
 import { useWalletFills, type WalletFill } from "@/lib/hooks/useWalletFills";
 import { SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
-import { TOKENS, type Token } from "@/lib/tokens";
+import { TOKENS, symbolLabel, type Token } from "@/lib/tokens";
 import { useEffect, useMemo, useState } from "react";
 import {
   formatUnits,
@@ -706,7 +706,7 @@ function Permit2Card({ token }: { token: Token }) {
           {token.symbol.charAt(0)}
         </div>
         <div className="font-medium text-[14px] flex-1">
-          {token.symbol}
+          {symbolLabel(token.symbol)}
           <div className="text-[11px] text-fg-faint font-normal">
             {token.name}
           </div>
@@ -720,7 +720,7 @@ function Permit2Card({ token }: { token: Token }) {
         </p>
       ) : state === "disconnected" ? (
         <p className="text-[12px] text-fg-dim leading-relaxed">
-          {t("trade.approvedTokens.connectWallet").replace("{symbol}", token.symbol)}
+          {t("trade.approvedTokens.connectWallet").replace("{symbol}", symbolLabel(token.symbol))}
         </p>
       ) : (
         <PermitBody token={token} status={s} />
@@ -771,7 +771,7 @@ function PermitBody({
     isApproved
       ? t("trade.approvedTokens.approved")
       : t("trade.approvedTokens.statusNotApproved")
-  ).replace("{symbol}", token.symbol);
+  ).replace("{symbol}", symbolLabel(token.symbol));
 
   return (
     <>
@@ -780,7 +780,7 @@ function PermitBody({
           {t("trade.approvedTokens.balance")}
         </span>
         <span className="font-mono tnum text-fg">
-          {status.balanceLoading ? "…" : balance} {token.symbol}
+          {status.balanceLoading ? "…" : balance} {symbolLabel(token.symbol)}
         </span>
       </div>
 

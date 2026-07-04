@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
 import { useTranslator } from "@/lib/locale-context";
 import type { Order } from "@/lib/order";
-import type { Token } from "@/lib/tokens";
+import { symbolLabel, type Token } from "@/lib/tokens";
 
 /**
  * Sign Confirmation modal — the load-bearing phishing-defence layer per
@@ -140,6 +140,9 @@ function Summary({ ctx }: { ctx: SignConfirmContext }) {
   const isSellingBase = side === "sell";
   const giveToken = isSellingBase ? baseToken : quoteToken;
   const getToken = isSellingBase ? quoteToken : baseToken;
+  // Display-only labels (WETH-TEST → "WETH-TEST（ETH）").
+  const giveSym = symbolLabel(giveToken.symbol);
+  const getSym = symbolLabel(getToken.symbol);
   const giveAmount = order.makerAmount;
 
   // fee comes off the taker payment when feeSide == makerToken (Case A)
@@ -165,29 +168,29 @@ function Summary({ ctx }: { ctx: SignConfirmContext }) {
         <span className="font-mono tnum text-fg">
           {fmt(giveAmount, giveToken.decimals)}
         </span>{" "}
-        {giveToken.symbol}{" "}
+        {giveSym}{" "}
         <span className="text-fg-faint">{t("trade.signModal.forAtLeast")}</span>{" "}
         <span className="font-mono tnum text-fg">
           {fmt(youReceive, getToken.decimals)}
         </span>{" "}
-        {getToken.symbol}
+        {getSym}
       </div>
 
       <dl className="grid grid-cols-[140px_1fr] gap-y-2 text-[13px]">
         <dt className="text-fg-faint">{t("trade.signModal.youGive")}</dt>
         <dd className="font-mono tnum">
-          {fmt(giveAmount, giveToken.decimals)} {giveToken.symbol}
+          {fmt(giveAmount, giveToken.decimals)} {giveSym}
         </dd>
 
         <dt className="text-fg-faint">{t("trade.signModal.youReceive")}</dt>
         <dd className="font-mono tnum">
-          {fmt(youReceive, getToken.decimals)} {getToken.symbol}{" "}
+          {fmt(youReceive, getToken.decimals)} {getSym}{" "}
           <span className="text-fg-faint">{t("trade.signModal.afterFee")}</span>
         </dd>
 
         <dt className="text-fg-faint">{t("trade.signModal.protocolFee")}</dt>
         <dd className="font-mono tnum">
-          {fmt(fee, getToken.decimals)} {getToken.symbol}{" "}
+          {fmt(fee, getToken.decimals)} {getSym}{" "}
           <span className="text-fg-faint">
             ({(order.feeBps / 100).toFixed(2)}%)
           </span>

@@ -25,7 +25,7 @@ import {
 } from "@/lib/permit2";
 import { useFillEvents } from "@/lib/hooks/useFillEvents";
 import { useWeth } from "@/lib/hooks/useWeth";
-import { TOKENS, feeConfig, type Pair, type Token } from "@/lib/tokens";
+import { TOKENS, feeConfig, symbolLabel, type Pair, type Token } from "@/lib/tokens";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { formatUnits, parseUnits, type Hex } from "viem";
 import {
@@ -137,8 +137,9 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
         fee: 0,
         net: 0,
         derivedReceive: 0,
-        derivedReceiveSymbol:
+        derivedReceiveSymbol: symbolLabel(
           side === "sell" ? quoteToken.symbol : baseToken.symbol,
+        ),
       };
     }
 
@@ -149,11 +150,11 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
     let grossInQuote: number;
     if (side === "sell") {
       derivedReceive = sizeN * priceN;
-      derivedReceiveSymbol = quoteToken.symbol;
+      derivedReceiveSymbol = symbolLabel(quoteToken.symbol);
       grossInQuote = derivedReceive;
     } else {
       derivedReceive = sizeN / priceN;
-      derivedReceiveSymbol = baseToken.symbol;
+      derivedReceiveSymbol = symbolLabel(baseToken.symbol);
       grossInQuote = sizeN; // budget IS the gross quote amount
     }
 
@@ -485,7 +486,7 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
                 : "bg-white/[0.03] text-fg-dim hover:text-fg"
             }`}
           >
-            {t("trade.placeOrder.buy").replace("{base}", pair.base)}
+            {t("trade.placeOrder.buy").replace("{base}", symbolLabel(pair.base))}
           </button>
           <button
             onClick={() => setSide("sell")}
@@ -495,7 +496,7 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
                 : "bg-white/[0.03] text-fg-dim hover:text-fg"
             }`}
           >
-            {t("trade.placeOrder.sell").replace("{base}", pair.base)}
+            {t("trade.placeOrder.sell").replace("{base}", symbolLabel(pair.base))}
           </button>
         </div>
 
@@ -509,8 +510,8 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
          */}
         <SizeField
           side={side}
-          baseSymbol={pair.base}
-          quoteSymbol={pair.quote}
+          baseSymbol={symbolLabel(pair.base)}
+          quoteSymbol={symbolLabel(pair.quote)}
           value={size}
           onChange={setSize}
         />
@@ -525,8 +526,8 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
 
         <PriceField
           side={side}
-          baseSymbol={pair.base}
-          quoteSymbol={pair.quote}
+          baseSymbol={symbolLabel(pair.base)}
+          quoteSymbol={symbolLabel(pair.quote)}
           value={unitPrice}
           onChange={setUnitPrice}
           marketPriceHint={stats.latestPrice}
@@ -541,8 +542,8 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
           <Row
             k={
               side === "sell"
-                ? t("trade.placeOrder.grossSell").replace("{symbol}", pair.quote)
-                : t("trade.placeOrder.grossBuy").replace("{symbol}", pair.base)
+                ? t("trade.placeOrder.grossSell").replace("{symbol}", symbolLabel(pair.quote))
+                : t("trade.placeOrder.grossBuy").replace("{symbol}", symbolLabel(pair.base))
             }
             v={`${fmtNum(totals.derivedReceive)} ${totals.derivedReceiveSymbol}`}
           />
@@ -574,13 +575,13 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
         {(side === "sell" ? cfg.feeSide === pair.quote : cfg.feeSide === pair.base) ? (
           <div className="mt-2 px-3 py-2 rounded-md border border-amber-500/30 bg-amber-500/[0.05] text-[11px] text-amber-300 leading-relaxed">
             {t("trade.placeOrder.caseBTakerNote")
-              .replace("{feeSide}", cfg.feeSide === pair.base ? pair.base : pair.quote)
+              .replace("{feeSide}", symbolLabel(cfg.feeSide === pair.base ? pair.base : pair.quote))
               // {quote} = the currency the taker actually receives (i.e. the
               // maker's makerToken in this fill). For a sell-side maker order
               // this is pair.base; for a buy-side maker order this is pair.quote.
-              .replace("{quote}", side === "sell" ? pair.base : pair.quote)
+              .replace("{quote}", symbolLabel(side === "sell" ? pair.base : pair.quote))
               // {makerToken} = the token the maker pays out (= maker's makerToken).
-              .replace("{makerToken}", side === "sell" ? pair.base : pair.quote)
+              .replace("{makerToken}", symbolLabel(side === "sell" ? pair.base : pair.quote))
               .replace(
                 "{bps}",
                 (cfg.feeBps / 100).toLocaleString("en-US", {
@@ -674,14 +675,14 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
             : makerStatus.approveStep === "approving"
             ? t("trade.placeOrder.approvingErc20").replace(
                 "{symbol}",
-                makerToken.symbol,
+                symbolLabel(makerToken.symbol),
               )
             : signing
             ? t("trade.placeOrder.waitingForWallet")
             : !makerStatus.isErc20Approved
             ? t("trade.placeOrder.approveAndSign").replace(
                 "{symbol}",
-                makerToken.symbol,
+                symbolLabel(makerToken.symbol),
               )
             : t("trade.placeOrder.signOrder")}
         </button>
@@ -987,7 +988,7 @@ function BalanceCell({ token }: { token: Token }) {
   return (
     <div className="flex flex-col gap-0.5 min-w-0">
       <span className="text-[10px] uppercase tracking-[0.14em] text-fg-faint">
-        {token.symbol}
+        {symbolLabel(token.symbol)}
       </span>
       <span className="font-mono tnum text-[14px] text-fg truncate">
         {display}

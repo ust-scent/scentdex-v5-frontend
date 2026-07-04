@@ -4,7 +4,7 @@ import { useTranslator } from "@/lib/locale-context";
 import { useFillEvents } from "@/lib/hooks/useFillEvents";
 import { usePairConfig } from "@/lib/hooks/usePairConfig";
 import { formatPrice } from "@/lib/format-price";
-import { type Pair } from "@/lib/tokens";
+import { symbolLabel, type Pair } from "@/lib/tokens";
 
 /**
  * Pair stats strip — price, 24h change/volume/high/low, and protocol fee.
@@ -29,7 +29,7 @@ export function StatsBar({ pair }: { pair: Pair }) {
   const positive = (stats.priceChange24h ?? 0) >= 0;
 
   const volumeText = stats.fills.length > 0
-    ? `${fmtAmount(stats.volume24h)} ${pair.quote}`
+    ? `${fmtAmount(stats.volume24h)} ${symbolLabel(pair.quote)}`
     : "—";
   const highText = formatPrice(stats.high24h);
   const lowText = formatPrice(stats.low24h);

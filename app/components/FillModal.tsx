@@ -29,7 +29,7 @@ import {
   type PermitSingle,
   type SerialisedPermitSingle,
 } from "@/lib/permit2";
-import { TOKENS, type Token } from "@/lib/tokens";
+import { TOKENS, symbolLabel, type Token } from "@/lib/tokens";
 
 /** ms before "Confirming on chain…" gets a "tx is taking too long" warning. */
 const CONFIRM_TIMEOUT_MS = 90_000;
@@ -418,8 +418,9 @@ export function FillModal({
   const youReceive = formatBalance(remainingMaker, baseDecimals);
   const youPay = formatBalance(remainingTaker, quoteDecimals);
 
-  const youReceiveSym = makerTokenMeta?.symbol ?? "?";
-  const youPaySym = takerTokenMeta?.symbol ?? "?";
+  // Display-only labels. symbolLabel surfaces WETH-TEST as "WETH-TEST（ETH）".
+  const youReceiveSym = makerTokenMeta ? symbolLabel(makerTokenMeta.symbol) : "?";
+  const youPaySym = takerTokenMeta ? symbolLabel(takerTokenMeta.symbol) : "?";
 
   // V6 Case B disclosure: feeAmount / feeToken come from on-chain previewFee.
   // Case A: feeToken == takerToken — the taker's makerToken receive is full,
@@ -718,7 +719,10 @@ export function FillModal({
         </header>
 
         <div className="p-5 space-y-4 text-[13px]">
-          <Row label={t("trade.fillModal.pair")} value={order.pair} />
+          <Row
+            label={t("trade.fillModal.pair")}
+            value={order.pair.split("/").map(symbolLabel).join(" / ")}
+          />
           <Row
             label={t("trade.fillModal.maker")}
             value={

@@ -14,6 +14,16 @@ export type Token = {
    * leg when the user's balance is short.
    */
   wrapsNative?: boolean;
+  /**
+   * User-facing label shown in the UI INSTEAD of `symbol`. `symbol` stays the
+   * internal identifier (PAIR_CONFIG keys, pairKey, feeSide matching, the
+   * `/api/orders?pair=` param) and must never change. Only rendering goes
+   * through `symbolLabel()`. Used to surface WETH-TEST as "WETH-TEST（ETH）"
+   * so first-time users see it is the same asset as ETH. Undefined for
+   * production tokens → `symbolLabel` returns `symbol` unchanged (no /trade
+   * regression).
+   */
+  displaySymbol?: string;
 };
 
 /**
@@ -92,6 +102,10 @@ export const TOKENS: Token[] = [
         | undefined,
     },
     accentClass: "bg-sky-500",
+    // Shown in the UI as the production label "SDT" (internal symbol stays
+    // "SDT-TEST"). Keeps the test build's UI identical to mainnet so no
+    // source edit is needed at cutover.
+    displaySymbol: "SDT",
   },
   {
     symbol: "WETH-TEST",
@@ -109,8 +123,22 @@ export const TOKENS: Token[] = [
     },
     accentClass: "bg-indigo-400",
     wrapsNative: true,
+    // Surfaced in the UI as the production label "WETH（ETH）" so first-time
+    // users understand it is the same asset as ETH (auto-wrapped) and the
+    // test build matches mainnet with no post-test source edit. Internal
+    // `symbol` stays "WETH-TEST".
+    displaySymbol: "WETH（ETH）",
   },
 ];
+
+/**
+ * User-facing label for a token symbol. Returns the token's `displaySymbol`
+ * when set, otherwise the symbol itself. Render sites must call this; internal
+ * logic (pair keys, feeSide, API params) keeps using the raw `symbol`.
+ */
+export function symbolLabel(symbol: Token["symbol"] | string): string {
+  return TOKENS.find((t) => t.symbol === symbol)?.displaySymbol ?? symbol;
+}
 
 export type Pair = {
   base: Token["symbol"];

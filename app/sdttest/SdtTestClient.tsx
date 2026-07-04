@@ -14,7 +14,7 @@ import { useTokenStatus } from "@/lib/hooks/useTokenStatus";
 import { useWeth } from "@/lib/hooks/useWeth";
 import { type SupportedLocale } from "@/lib/i18n";
 import { LocaleProvider } from "@/lib/locale-context";
-import { SDTTEST_PAIR, TOKENS } from "@/lib/tokens";
+import { SDTTEST_PAIR, symbolLabel, TOKENS } from "@/lib/tokens";
 
 /**
  * SDT/WETH test market client (Sepolia only).
@@ -42,7 +42,6 @@ export function SdtTestClient({
   return (
     <LocaleProvider locale={initialLocale}>
       <div className="max-w-[1440px] mx-auto">
-        <TestnetBanner />
         {!MARKET_LIVE ? (
           <NotLiveNotice />
         ) : (
@@ -66,47 +65,16 @@ export function SdtTestClient({
   );
 }
 
-function TestnetBanner() {
-  const chainId = useChainId();
-  const { isConnected } = useAccount();
-  const wrongChain = isConnected && chainId !== SEPOLIA_CHAIN_ID;
-  return (
-    <div className="px-3 sm:px-6 pt-3">
-      <div className="rounded-md border-2 border-amber-500/50 bg-amber-500/[0.08] px-4 py-3">
-        <div className="flex items-center gap-2 text-amber-300 text-[13px] font-semibold uppercase tracking-[0.14em]">
-          <span aria-hidden="true">⚠</span>
-          <span>Sepolia testnet — SDT-TEST/WETH-TEST market</span>
-        </div>
-        <p className="text-[12px] text-fg-dim mt-1 leading-relaxed">
-          Test environment for the SDT listing. Every token here is a
-          valueless testnet asset (hence the -TEST names); nothing on this
-          page trades real funds. The SDT-TEST seller pays a 10% protocol
-          fee, carved from their WETH-TEST proceeds. You trade in ETH —
-          wrapping to WETH-TEST happens automatically when needed.
-          {wrongChain ? (
-            <span className="text-amber-300">
-              {" "}
-              Your wallet is on the wrong network — approve the Sepolia
-              switch prompt, or switch manually.
-            </span>
-          ) : null}
-        </p>
-      </div>
-    </div>
-  );
-}
-
 function NotLiveNotice() {
   return (
     <div className="px-3 sm:px-6 py-16 text-center">
       <div className="inline-block rounded-lg border border-line bg-white/[0.015] px-8 py-10">
         <div className="text-[15px] font-medium mb-2">
-          Test market not live yet
+          Market not available yet
         </div>
         <p className="text-[13px] text-fg-dim leading-relaxed max-w-[420px]">
-          The SDT-TEST/WETH-TEST Sepolia contracts have not been deployed
-          (or this build is missing their addresses). Check back once the
-          bring-up completes.
+          The SDT/WETH market is not live in this build. Check back once
+          setup completes.
         </p>
       </div>
     </div>
@@ -143,32 +111,43 @@ function EthWethBar() {
   if (!isConnected || !onSepolia) return null;
 
   return (
-    <div className="px-3 sm:px-6 pt-3">
+    <div className="px-3 sm:px-6 pt-3 space-y-2">
+      {/* First-time explainer: ETH and WETH are the same asset, auto-converted. */}
+      <div className="rounded-md border border-indigo-400/30 bg-indigo-400/[0.06] px-4 py-2.5 flex items-start gap-2">
+        <span aria-hidden="true" className="text-indigo-300 text-[13px] mt-[1px]">ⓘ</span>
+        <p className="text-[12px] text-fg-dim leading-relaxed">
+          <span className="text-fg">ETH and WETH（ETH）are the same asset, 1:1.</span>{" "}
+          Just hold ETH — when you place an order it is wrapped to WETH
+          automatically, so you never need to get WETH yourself. Any WETH you
+          receive can be turned back into ETH in one click with{" "}
+          <span className="text-fg">Unwrap</span>.
+        </p>
+      </div>
       <div className="rounded-md border border-line bg-white/[0.02] px-4 py-3 flex flex-wrap items-center gap-x-8 gap-y-2">
         <BalanceItem label="ETH" value={fmt(weth.ethBalance)} />
-        <BalanceItem label="WETH-TEST" value={fmt(weth.wethBalance)} />
-        <BalanceItem label="SDT-TEST" value={fmt(sdtStatus.balance)} />
+        <BalanceItem label={symbolLabel("WETH-TEST")} value={fmt(weth.wethBalance)} />
+        <BalanceItem label={symbolLabel("SDT-TEST")} value={fmt(sdtStatus.balance)} />
         <div className="flex items-center gap-2 ml-auto">
           <button
             onClick={() => weth.unwrap(weth.wethBalance)}
             disabled={weth.wethBalance === 0n || weth.isUnwrapping}
             className="px-3 py-1.5 rounded-md border border-line text-[12px] text-fg-dim hover:text-fg hover:border-line-strong disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {weth.isUnwrapping ? "Unwrapping…" : "Unwrap WETH-TEST → ETH"}
+            {weth.isUnwrapping ? "Unwrapping…" : "Unwrap WETH → ETH"}
           </button>
           <button
             onClick={() => sdtStatus.mintDefault()}
             disabled={sdtStatus.isMinting}
             className="px-3 py-1.5 rounded-md border border-line text-[12px] text-fg-dim hover:text-fg hover:border-line-strong disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {sdtStatus.isMinting ? "Minting…" : "Faucet: 1,000 SDT-TEST"}
+            {sdtStatus.isMinting ? "Minting…" : "Faucet: 1,000 SDT"}
           </button>
           <button
             onClick={() => wethMintStatus.mintDefault()}
             disabled={wethMintStatus.isMinting}
             className="px-3 py-1.5 rounded-md border border-line text-[12px] text-fg-dim hover:text-fg hover:border-line-strong disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {wethMintStatus.isMinting ? "Minting…" : "Faucet: 1,000 WETH-TEST"}
+            {wethMintStatus.isMinting ? "Minting…" : "Faucet: 1,000 WETH"}
           </button>
         </div>
       </div>
