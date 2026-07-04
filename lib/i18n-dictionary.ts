@@ -232,6 +232,8 @@ export type Dictionary = {
   "trade.placeOrder.insufficientBalance": string;
   "trade.placeOrder.amountTooSmall": string;
   "trade.placeOrder.priceFarFromMarket": string;
+  "trade.placeOrder.crossesBookBuy": string;
+  "trade.placeOrder.crossesBookSell": string;
   "trade.placeOrder.orderSigned": string;
   "trade.placeOrder.orderPosted": string;
   "trade.placeOrder.orderPlacedHeader": string;
@@ -334,6 +336,11 @@ export type Dictionary = {
   "trade.fillModal.youReceiveNet": string;
   "trade.fillModal.protocolFee": string;
   "trade.fillModal.youPay": string;
+  "trade.fillModal.fillAmount": string;
+  "trade.fillModal.fillAmountMax": string;
+  "trade.fillModal.fillAmountRange": string;
+  "trade.fillModal.fillAmountTooSmall": string;
+  "trade.fillModal.partialHint": string;
   "trade.fillModal.orderStatus": string;
   "trade.fillModal.cantFillOwn": string;
   "trade.fillModal.missingPermit": string;
@@ -669,6 +676,10 @@ const en: Dictionary = {
   "trade.placeOrder.insufficientBalance": "Insufficient balance",
   "trade.placeOrder.amountTooSmall": "Amount too small",
   "trade.placeOrder.priceFarFromMarket": "Heads up: this price is far from the last traded price. Double-check before signing.",
+  "trade.placeOrder.crossesBookBuy":
+    "This buy price is at or above the lowest ask ({price}). Your order crosses the book and can be filled immediately at your price.",
+  "trade.placeOrder.crossesBookSell":
+    "This sell price is at or below the highest bid ({price}). Your order crosses the book and can be filled immediately at your price.",
   "trade.placeOrder.orderSigned": "Order signed. Signature:",
   "trade.placeOrder.orderPosted":
     "Posted to the book. The taker side will see your order within a poll cycle.",
@@ -797,6 +808,14 @@ const en: Dictionary = {
   "trade.fillModal.youReceiveNet": "You receive (after fee)",
   "trade.fillModal.protocolFee": "Protocol fee ({bps}%)",
   "trade.fillModal.youPay": "You pay",
+  "trade.fillModal.fillAmount": "Amount to fill",
+  "trade.fillModal.fillAmountMax": "Max",
+  "trade.fillModal.fillAmountRange":
+    "Enter an amount above 0 and up to {max} {symbol}.",
+  "trade.fillModal.fillAmountTooSmall":
+    "This amount is too small to settle — the payment side rounds to zero.",
+  "trade.fillModal.partialHint":
+    "You can fill part of this order. The remainder stays on the book.",
   "trade.fillModal.orderStatus": "Order status",
   "trade.fillModal.cantFillOwn": "You can't fill your own order. Use Cancel instead.",
   "trade.fillModal.missingPermit":
@@ -1140,6 +1159,10 @@ const ja: Dictionary = {
   "trade.placeOrder.insufficientBalance": "残高が不足しています",
   "trade.placeOrder.amountTooSmall": "数量が小さすぎます",
   "trade.placeOrder.priceFarFromMarket": "注意: この価格は直近の約定価格から大きく離れています。署名前に確認してください。",
+  "trade.placeOrder.crossesBookBuy":
+    "この買い価格は最良売り気配（{price}）以上です。板とクロスしており、この価格で即座に約定される可能性があります。",
+  "trade.placeOrder.crossesBookSell":
+    "この売り価格は最良買い気配（{price}）以下です。板とクロスしており、この価格で即座に約定される可能性があります。",
   "trade.placeOrder.orderSigned": "署名:",
   "trade.placeOrder.orderPosted":
     "板に投稿しました。次のポーリングでテイカー側にも表示されます。",
@@ -1269,6 +1292,14 @@ const ja: Dictionary = {
   "trade.fillModal.youReceiveNet": "実際の受取",
   "trade.fillModal.protocolFee": "プロトコル手数料 ({bps}%)",
   "trade.fillModal.youPay": "支払",
+  "trade.fillModal.fillAmount": "約定する数量",
+  "trade.fillModal.fillAmountMax": "全量",
+  "trade.fillModal.fillAmountRange":
+    "0 より大きく {max} {symbol} 以下の数量を入力してください。",
+  "trade.fillModal.fillAmountTooSmall":
+    "数量が小さすぎて決済できません（支払側が 0 に丸められます）。",
+  "trade.fillModal.partialHint":
+    "この注文は一部だけ約定できます。残りは板に残ります。",
   "trade.fillModal.orderStatus": "注文ステータス",
   "trade.fillModal.cantFillOwn": "自分の注文は約定できません。代わりにキャンセルしてください。",
   "trade.fillModal.missingPermit":

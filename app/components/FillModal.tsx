@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { type Address, type Hex, formatUnits } from "viem";
+import { type Address, type Hex, formatUnits, parseUnits } from "viem";
 import {
   useAccount,
   useChainId,
@@ -200,10 +200,22 @@ export function FillModal({
   // than they actually receive. The contract returns (0, address(0)) for
   // any non-fillable state (paused / cancelled / expired / sized wrong),
   // so a non-zero feeAmount IS the live, on-chain truth about this fill.
+  // H-05 partial fill: taker-chosen fill size, denominated in the order's
+  // makerToken (what the taker RECEIVES — same unit as the contract's
+  // fillMakerAmount parameter). Prefilled with the exact remaining amount
+  // on open, so the default click is still a full fill.
+  const [fillInput, setFillInput] = useState("");
+
+  // H-05: parse the taker's chosen fill size and mirror the contract's
+  // partial-fill payment maths so preview, permit amount and the on-chain
+  // call all agree to the wei.
+  const fillCalc = useMemo(
+    () => computeFill(order, fillInput, makerTokenMeta?.decimals ?? 18),
+    [order, fillInput, makerTokenMeta?.decimals],
+  );
+
   const previewArgs = useMemo(() => {
-    if (!order) return undefined;
-    const remaining = BigInt(order.order.makerAmount) - BigInt(order.filledMakerAmount);
-    if (remaining <= 0n) return undefined;
+    if (!order || fillCalc.fillMaker === null) return undefined;
     return [
       {
         maker: order.order.maker,
@@ -217,9 +229,9 @@ export function FillModal({
         feeSide: order.order.feeSide,
         feeBps: order.order.feeBps,
       },
-      remaining,
+      fillCalc.fillMaker,
     ] as const;
-  }, [order]);
+  }, [order, fillCalc.fillMaker]);
   const previewQuery = useReadContract({
     abi: SCENTDEX_V5_ABI,
     address: dexAddress,
@@ -247,10 +259,23 @@ export function FillModal({
     if (!open) return;
     setPhase("idle");
     setError(null);
+    // Prefill the fill-amount input with the exact remaining makerToken
+    // amount (formatUnits round-trips losslessly through parseUnits), so
+    // the default action stays "fill everything".
+    if (order) {
+      const remaining =
+        BigInt(order.order.makerAmount) - BigInt(order.filledMakerAmount);
+      setFillInput(
+        remaining > 0n
+          ? formatUnits(remaining, makerTokenMeta?.decimals ?? 18)
+          : "",
+      );
+    }
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, order?.orderHash]);
 
   // Catch wallet-side submit errors. wagmi's useWriteContract surfaces
@@ -411,12 +436,13 @@ export function FillModal({
   const takerAmount = BigInt(order.order.takerAmount);
   const filledMaker = BigInt(order.filledMakerAmount);
   const remainingMaker = makerAmount - filledMaker;
-  // Proportional remaining taker.
-  const remainingTaker =
-    makerAmount > 0n ? (takerAmount * remainingMaker) / makerAmount : 0n;
+  // Taker-chosen fill size (H-05). Invalid input keeps the modal open but
+  // disables Fill; the 0n fallbacks keep the display rows rendering.
+  const fillMaker = fillCalc.fillMaker ?? 0n;
+  const fillTaker = fillCalc.fillTaker ?? 0n;
 
-  const youReceive = formatBalance(remainingMaker, baseDecimals);
-  const youPay = formatBalance(remainingTaker, quoteDecimals);
+  const youReceive = formatBalance(fillMaker, baseDecimals);
+  const youPay = formatBalance(fillTaker, quoteDecimals);
 
   // Display-only labels. symbolLabel surfaces WETH-TEST as "WETH-TEST（ETH）".
   const youReceiveSym = makerTokenMeta ? symbolLabel(makerTokenMeta.symbol) : "?";
@@ -445,17 +471,19 @@ export function FillModal({
     feeAmount > 0n &&
     feeToken.toLowerCase() === order.order.makerToken.toLowerCase();
   const netReceive = feeAppliesToTakerReceive
-    ? remainingMaker - feeAmount
-    : remainingMaker;
+    ? fillMaker - feeAmount
+    : fillMaker;
   const youReceiveNet = formatBalance(netReceive, baseDecimals);
   const youReceiveFee = formatBalance(feeAmount, baseDecimals);
   const feeBpsForLabel = order.order.feeBps;
   const feeBpsDisplay = (feeBpsForLabel / 100).toLocaleString("en-US", {
     maximumFractionDigits: 2,
   });
+  // Unit price from the ORDER's full amounts — stable regardless of the
+  // chosen fill size (a partial fill settles at the same unit price).
   const priceNumber =
-    Number(formatUnits(remainingTaker, quoteDecimals)) /
-    Math.max(Number(formatUnits(remainingMaker, baseDecimals)), 1e-18);
+    Number(formatUnits(takerAmount, quoteDecimals)) /
+    Math.max(Number(formatUnits(makerAmount, baseDecimals)), 1e-18);
 
   const notSelf =
     account && order.order.maker.toLowerCase() !== account.toLowerCase();
@@ -472,12 +500,16 @@ export function FillModal({
 
   // -- Action: auto-wrap (taker pays WETH, balance short) -----------------------
   const takerIsWeth = Boolean(takerTokenMeta?.wrapsNative);
-  const wethShortfall = takerIsWeth ? weth.shortfallFor(remainingTaker) : 0n;
+  const wethShortfall = takerIsWeth ? weth.shortfallFor(fillTaker) : 0n;
   const needsWrap = wethShortfall > 0n;
 
   // -- Action: sign per-fill PermitSingle then fillOrder() ---------------------
   async function onFillClick() {
     if (!account || !dexAddress || !order) return;
+    // H-05: never submit with an invalid / zero fill size — the button is
+    // disabled in that state, but the wrap auto-advance path also lands here.
+    if (fillCalc.fillMaker === null || fillCalc.fillTaker === null || fillCalc.fillTaker === 0n)
+      return;
     if (!hasMakerPermit) {
       setError(
         "this order was signed before per-order Permit2 was wired up — ask the maker to re-post",
@@ -493,7 +525,9 @@ export function FillModal({
     const takerPermit: PermitSingle = {
       details: {
         token: order.order.takerToken,
-        amount: remainingTaker,
+        // Exactly the contract-side payment for this fill size (ceil-rounded
+        // partials included) — no idle allowance beyond this fill.
+        amount: fillTaker,
         expiration: Number(orderExpiry),
         nonce: takerStatus.permit2DexNonce,
       },
@@ -534,7 +568,7 @@ export function FillModal({
         feeBps: order.order.feeBps,
       },
       order.signature,
-      remainingMaker,
+      fillMaker,
       {
         details: {
           token: takerPermit.details.token,
@@ -680,6 +714,9 @@ export function FillModal({
     !notSelf ||
     !hasMakerPermit ||
     previewBlocking ||
+    // H-05: invalid / out-of-range / dust fill size blocks Fill (but never
+    // the "close & retry" repurposed button in the error phase).
+    (fillCalc.fillMaker === null && phase !== "error") ||
     // Consent gating: the box must be ticked for every fill. In the
     // "error" phase the button repurposes itself into "close & retry",
     // so we don't block that recovery path on the checkbox.
@@ -740,6 +777,55 @@ export function FillModal({
               </span>
             }
           />
+
+          {/* H-05: taker-side fill amount, in the token the taker receives.
+              Prefilled with the full remaining amount; editable down for a
+              partial fill (the contract has supported this all along). */}
+          <div>
+            <div className="flex items-end justify-between mb-1.5 gap-2">
+              <span className="text-[12px] text-fg-dim">
+                {t("trade.fillModal.fillAmount")}
+              </span>
+              <span className="text-[11px] text-fg-faint font-mono">
+                {youReceiveSym}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 px-3 py-2.5 bg-white/[0.02] border border-line rounded-md focus-within:border-line-strong">
+              <input
+                inputMode="decimal"
+                value={fillInput}
+                onChange={(e) => setFillInput(e.target.value)}
+                disabled={isAlreadyDone || (phase !== "idle" && phase !== "error")}
+                className="w-full bg-transparent outline-none text-[15px] font-mono tnum placeholder:text-fg-faint disabled:opacity-50"
+                aria-label={t("trade.fillModal.fillAmount")}
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  setFillInput(formatUnits(remainingMaker, baseDecimals))
+                }
+                disabled={isAlreadyDone || (phase !== "idle" && phase !== "error")}
+                className="shrink-0 px-2 py-1 rounded border border-line text-[11px] text-fg-dim hover:text-fg hover:border-line-strong transition-colors disabled:opacity-50"
+              >
+                {t("trade.fillModal.fillAmountMax")}
+              </button>
+            </div>
+            <div className="mt-1 text-[11px] text-fg-faint">
+              {t("trade.fillModal.partialHint")}
+            </div>
+          </div>
+
+          {fillCalc.error === "range" ? (
+            <Note kind="warn">
+              {t("trade.fillModal.fillAmountRange")
+                .replace("{max}", formatBalance(remainingMaker, baseDecimals))
+                .replace("{symbol}", youReceiveSym)}
+            </Note>
+          ) : null}
+          {fillCalc.error === "tooSmall" ? (
+            <Note kind="warn">{t("trade.fillModal.fillAmountTooSmall")}</Note>
+          ) : null}
+
           {feeAppliesToTakerReceive ? (
             <>
               <Row
@@ -918,9 +1004,69 @@ function formatBalance(raw: bigint, decimals: number): string {
   const fracRaw = raw % 10n ** BigInt(decimals);
   const wholeStr = whole.toLocaleString("en-US");
   if (fracRaw === 0n) return wholeStr;
-  const fracPadded = fracRaw.toString().padStart(decimals, "0").slice(0, 6);
+  // Sub-1 values get 12 fraction digits (same D-05 rule as PlaceOrder's
+  // fmtNum) so dust-priced WETH legs don't round away to "0".
+  const maxFrac = whole === 0n ? 12 : 6;
+  const fracPadded = fracRaw.toString().padStart(decimals, "0").slice(0, maxFrac);
   const fracTrimmed = fracPadded.replace(/0+$/, "");
   return fracTrimmed.length === 0 ? wholeStr : `${wholeStr}.${fracTrimmed}`;
+}
+
+/**
+ * H-05 partial fill: parse the taker's fill-size input (makerToken units,
+ * comma / space tolerant per D-02) and compute the exact takerToken payment
+ * by mirroring ScentDexV6._proportionalTakerAmount:
+ *   - final fill (fillMaker == remaining): pays the exact remaining taker
+ *     quota (takerAmount − filledTakerAmount)
+ *   - partial fill: ceil(fillMaker × takerAmount / makerAmount), capped at
+ *     the remaining quota (rounds in the maker's favour — matches on-chain)
+ * The permit amount and the preview both use this value, so what the taker
+ * signs is exactly what the contract pulls.
+ */
+function computeFill(
+  order: FillOrder | null,
+  fillInput: string,
+  makerDecimals: number,
+): {
+  fillMaker: bigint | null;
+  fillTaker: bigint | null;
+  error: "range" | "tooSmall" | null;
+} {
+  if (!order) return { fillMaker: null, fillTaker: null, error: null };
+  const makerAmount = BigInt(order.order.makerAmount);
+  const takerAmount = BigInt(order.order.takerAmount);
+  const filledMaker = BigInt(order.filledMakerAmount);
+  const filledTaker = BigInt(order.filledTakerAmount);
+  const remainingMaker =
+    makerAmount > filledMaker ? makerAmount - filledMaker : 0n;
+  if (remainingMaker === 0n || makerAmount === 0n)
+    return { fillMaker: null, fillTaker: null, error: null };
+
+  const cleaned = fillInput.replace(/[,\s]/g, "");
+  let parsed: bigint;
+  try {
+    parsed = parseUnits(cleaned, makerDecimals);
+  } catch {
+    return { fillMaker: null, fillTaker: null, error: "range" };
+  }
+  if (parsed <= 0n || parsed > remainingMaker)
+    return { fillMaker: null, fillTaker: null, error: "range" };
+
+  const remainingTakerQuota =
+    takerAmount > filledTaker ? takerAmount - filledTaker : 0n;
+  let fillTaker: bigint;
+  if (filledMaker + parsed === makerAmount) {
+    fillTaker = remainingTakerQuota;
+  } else {
+    const rawCeil = (parsed * takerAmount + makerAmount - 1n) / makerAmount;
+    fillTaker = rawCeil > remainingTakerQuota ? remainingTakerQuota : rawCeil;
+  }
+  // The contract reverts ZeroResidualTaker on a zero payment leg — surface
+  // it as "amount too small" before the taker burns gas discovering it.
+  if (fillTaker === 0n)
+    return { fillMaker: null, fillTaker: null, error: "tooSmall" };
+
+  return { fillMaker: parsed, fillTaker, error: null };
 }
 
 // Silence "unused" lint for the empty-permit constants — kept exported in

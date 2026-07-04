@@ -23,7 +23,9 @@ import {
   serialisePermitSingle,
   type PermitSingle,
 } from "@/lib/permit2";
+import { useBestPrices } from "@/lib/hooks/useBestPrices";
 import { useFillEvents } from "@/lib/hooks/useFillEvents";
+import { formatPrice } from "@/lib/format-price";
 import { useWeth } from "@/lib/hooks/useWeth";
 import { TOKENS, feeConfig, symbolLabel, type Pair, type Token } from "@/lib/tokens";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -224,10 +226,27 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
   // maker may legitimately post far from market — but flags it so a mis-typed
   // 1e24 price isn't submitted silently (tester E-07 / E-10).
   const priceFarFromMarket = (() => {
-    const p = Number(unitPrice);
+    const p = Number(unitPrice.replace(/[,\s]/g, ""));
     const last = stats.latestPrice;
     if (!last || last <= 0 || !Number.isFinite(p) || p <= 0) return false;
     return p > last * 20 || p < last / 20;
+  })();
+
+  // Non-blocking warning (E-10 strict): the entered price crosses the live
+  // book — a buy at/above the best ask, or a sell at/below the best bid.
+  // Complements the last-trade deviation heuristic above with the actual
+  // resting orders, so a maker who is about to be instantly filled at their
+  // own price sees it BEFORE signing. Never disables signing: crossing on
+  // purpose is a legitimate way to take liquidity on a signed-order DEX.
+  const book = useBestPrices(pair);
+  const crossesBook = (() => {
+    const p = Number(unitPrice.replace(/[,\s]/g, ""));
+    if (!Number.isFinite(p) || p <= 0) return null;
+    if (side === "buy" && book.bestAsk !== null && p >= book.bestAsk)
+      return { key: "trade.placeOrder.crossesBookBuy" as const, at: book.bestAsk };
+    if (side === "sell" && book.bestBid !== null && p <= book.bestBid)
+      return { key: "trade.placeOrder.crossesBookSell" as const, at: book.bestBid };
+    return null;
   })();
 
   function proceedToModal() {
@@ -569,6 +588,12 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
         {priceFarFromMarket ? (
           <div className="mt-1 px-3 py-2 rounded-md border border-amber-500/40 bg-amber-500/[0.06] text-[11px] text-amber-300 leading-relaxed">
             {t("trade.placeOrder.priceFarFromMarket")}
+          </div>
+        ) : null}
+
+        {crossesBook ? (
+          <div className="mt-1 px-3 py-2 rounded-md border border-amber-500/40 bg-amber-500/[0.06] text-[11px] text-amber-300 leading-relaxed">
+            {t(crossesBook.key).replace("{price}", formatPrice(crossesBook.at))}
           </div>
         ) : null}
 
