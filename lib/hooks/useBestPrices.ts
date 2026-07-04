@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useChainId } from "wagmi";
+import { useAccount, useChainId } from "wagmi";
 
 import { deriveBestPrices, type BookApiOrder } from "@/lib/book";
 import type { Pair } from "@/lib/tokens";
@@ -18,6 +18,9 @@ export function useBestPrices(pair: Pair): {
   bestBid: number | null;
 } {
   const chainId = useChainId();
+  // Own resting orders are excluded from the derived book top (bug_003):
+  // the crossing warning must not fire against the user's own liquidity.
+  const { address: account } = useAccount();
   const [orders, setOrders] = useState<BookApiOrder[]>([]);
 
   const pairKey = `${pair.base}/${pair.quote}`;
@@ -50,5 +53,5 @@ export function useBestPrices(pair: Pair): {
     };
   }, [pairKey]);
 
-  return deriveBestPrices(orders, pair, chainId);
+  return deriveBestPrices(orders, pair, chainId, account);
 }

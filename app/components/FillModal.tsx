@@ -746,8 +746,13 @@ export function FillModal({
   // gross / fee / net rows depend on it. Letting the taker fill while the
   // call is in flight (or errored) would silently revert them to the legacy
   // single-row disclosure and they'd receive `gross − fee` without warning.
+  // In the error phase the primary button is repurposed into "close &
+  // retry" — a preview refetch (e.g. the taker edits the amount, which is
+  // still enabled there) must not dead-lock that escape hatch.
   const previewBlocking =
-    onSupportedChain && (previewQuery.isLoading || previewQuery.isError);
+    onSupportedChain &&
+    phase !== "error" &&
+    (previewQuery.isLoading || previewQuery.isError);
   const buttonDisabled =
     isAlreadyDone ||
     !account ||

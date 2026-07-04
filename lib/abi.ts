@@ -248,14 +248,8 @@ export const SCENTDEX_V5_ABI = [
     outputs: [{ name: "", type: "bool" }],
   },
   // Auto-generated getters for public mappings on ScentDexV6 — required
-  // by the keeper-bot's fillability rescan.
-  {
-    type: "function",
-    name: "filledMakerAmount",
-    stateMutability: "view",
-    inputs: [{ name: "", type: "bytes32" }],
-    outputs: [{ name: "", type: "uint256" }],
-  },
+  // by the keeper-bot's fillability rescan. (filledMakerAmount already
+  // appears above with a named input — same selector, listed once.)
   {
     type: "function",
     name: "filledTakerAmount",
