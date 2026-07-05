@@ -1,7 +1,7 @@
 import type { Address } from "viem";
 
 export type Token = {
-  symbol: "SCENT" | "JPYC" | "USDT" | "SDO" | "SDT-TEST" | "WETH-TEST";
+  symbol: "SCENT" | "JPYC" | "USDT" | "SDO" | "SDT" | "WETH" | "SDT-TEST" | "WETH-TEST";
   name: string;
   decimals: number;
   /** Per-chain ERC-20 address. Mainnet = production; Sepolia = MockERC20. */
@@ -84,6 +84,33 @@ export const TOKENS: Token[] = [
       11155111: "0xB402dFBb233b231076609aB766B829336492D99C",
     },
     accentClass: "bg-fuchsia-500",
+  },
+  // ---- SDT/WETH production tokens (mainnet, /sdt pinned route) ----------
+  // Listed on mainnet V6 2026-07-05 (setToken + executeSetPair, feeSide=SDT
+  // 10%). NOT in PAIRS yet — the pair is reachable only via the pinned /sdt
+  // route until Alex opens the /trade tab at official release.
+  {
+    symbol: "SDT",
+    name: "Seven DAO Token",
+    decimals: 18,
+    addresses: {
+      1: "0x46031C24f0021efeBaC763A2E342b3ec4Ca3a7F9",
+      11155111: undefined,
+    },
+    accentClass: "bg-sky-500",
+  },
+  {
+    symbol: "WETH",
+    name: "Wrapped Ether",
+    decimals: 18,
+    addresses: {
+      // Canonical WETH9. wrapsNative drives the auto-wrap UX: buyers hold
+      // plain ETH; the order flow deposits the shortfall automatically.
+      1: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      11155111: undefined,
+    },
+    accentClass: "bg-indigo-400",
+    wrapsNative: true,
   },
   // ---- SDT/WETH test market (Sepolia only, /sdttest route) -------------
   // Both tokens deliberately have NO mainnet address: pairsForChain(1) can
@@ -191,6 +218,9 @@ export const PAIR_CONFIG: Record<number, Record<string, PairFeeConfig>> = {
   1: {
     "SCENT/JPYC": { feeBps: 1000, feeSide: "SCENT" },
     "SCENT/USDT": { feeBps: 1000, feeSide: "SCENT" },
+    // Mainnet V6 bring-up 2026-07-05: announceSetPair(SDT, WETH, true, SDT,
+    // 1000) — the SDT seller pays 10%, carved in WETH from their proceeds.
+    "SDT/WETH": { feeBps: 1000, feeSide: "SDT" },
   },
   11155111: {
     "SCENT/JPYC": { feeBps: 1000, feeSide: "SCENT" },
@@ -210,6 +240,13 @@ export const PAIR_CONFIG: Record<number, Record<string, PairFeeConfig>> = {
  * the test market is only reachable via its own page.
  */
 export const SDTTEST_PAIR: Pair = { base: "SDT-TEST", quote: "WETH-TEST" };
+
+/**
+ * The pinned pair for the /sdt route (mainnet, real SDT + WETH9). Kept OUT
+ * of `PAIRS` until official release — cutover is: add this pair to PAIRS
+ * (one line, the /trade tab appears) and delete the /sdt route.
+ */
+export const SDT_MAINNET_PAIR: Pair = { base: "SDT", quote: "WETH" };
 
 export function pairKey(pair: Pair): string {
   return `${pair.base}/${pair.quote}`;

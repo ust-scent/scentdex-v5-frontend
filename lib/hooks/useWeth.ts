@@ -37,9 +37,11 @@ export const WRAP_GAS_BUFFER = 10n ** 16n; // 0.01 ETH
 export function useWeth() {
   const { address: account, isConnected } = useAccount();
   const chainId = useChainId();
-  const wethAddress = TOKENS.find((t) => t.wrapsNative)?.addresses[
-    chainId
-  ];
+  // Chain-aware lookup: WETH-TEST (Sepolia) and WETH (mainnet) both carry
+  // wrapsNative — pick the one actually deployed on the connected chain.
+  const wethAddress = TOKENS.find(
+    (t) => t.wrapsNative && t.addresses[chainId],
+  )?.addresses[chainId];
   const enabled = Boolean(isConnected && account && wethAddress);
 
   const eth = useBalance({
