@@ -179,6 +179,8 @@ export type Dictionary = {
   "trade.orderBook.statusLoading": string;
   "trade.orderBook.statusEmpty": string;
   "trade.orderBook.statusAggregated": string;
+  "trade.orderBook.cancellerWarnPct": string;
+  "trade.orderBook.cancellerWarnOften": string;
 
   // Trade page — PlaceOrder
   "trade.placeOrder.title": string;
@@ -615,6 +617,10 @@ const en: Dictionary = {
   "trade.orderBook.statusLoading": "loading…",
   "trade.orderBook.statusEmpty": "empty",
   "trade.orderBook.statusAggregated": "aggregated",
+  "trade.orderBook.cancellerWarnPct":
+    "This maker has cancelled {pct}% of their orders — fills here are more likely to revert.",
+  "trade.orderBook.cancellerWarnOften":
+    "This maker cancels frequently — fills here are more likely to revert.",
 
   // Trade page — PlaceOrder
   "trade.placeOrder.title": "Place Order",
@@ -1093,6 +1099,10 @@ const ja: Dictionary = {
   "trade.orderBook.statusLoading": "読込中…",
   "trade.orderBook.statusEmpty": "なし",
   "trade.orderBook.statusAggregated": "集計済み",
+  "trade.orderBook.cancellerWarnPct":
+    "このメイカーは注文の {pct}% をキャンセルしています。ここでの約定は失敗しやすい傾向があります。",
+  "trade.orderBook.cancellerWarnOften":
+    "このメイカーは頻繁にキャンセルしています。ここでの約定は失敗しやすい傾向があります。",
 
   // Trade page — PlaceOrder
   "trade.placeOrder.title": "注文を出す",

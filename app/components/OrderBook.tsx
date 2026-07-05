@@ -274,6 +274,7 @@ function BookRow({
   isOwn: boolean;
   onClick: () => void;
 }) {
+  const t = useTranslator();
   const colour = side === "buy" ? "text-buy" : "text-sell";
   const bg = side === "buy" ? "bg-buy-soft" : "bg-sell-soft";
 
@@ -282,11 +283,14 @@ function BookRow({
   const reputationBadge =
     cancelClass === "ok" ? null : (
       <span
-        title={`This maker has cancelled ${
+        title={
           r !== undefined
-            ? `${Math.round(r * 100)}% of their orders`
-            : "frequently"
-        } — fills here are more likely to revert.`}
+            ? t("trade.orderBook.cancellerWarnPct").replace(
+                "{pct}",
+                String(Math.round(r * 100)),
+              )
+            : t("trade.orderBook.cancellerWarnOften")
+        }
         className={`text-[9px] font-mono px-1 rounded ${
           cancelClass === "strong"
             ? "bg-sell/20 text-sell"
