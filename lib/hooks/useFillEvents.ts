@@ -32,8 +32,11 @@ import { TOKENS, type Pair } from "@/lib/tokens";
  *
  * Implementation notes:
  *
- * - We chunk `getLogs` into 5,000-block ranges to stay under the public
- *   Sepolia RPC limits (publicnode.com caps at 5,000 blocks per call).
+ * - We chunk `getLogs` into 900-block ranges. thirdweb (the mainnet fill
+ *   index RPC) caps a single getLogs at 1,000 blocks and returns
+ *   error -32005 above that; 900 leaves headroom. 7,200 blocks (~24h) →
+ *   8 sequential calls per refetch. A larger chunk (the old 5,000) made
+ *   EVERY call error, so Recent Trades / StatsBar hung on "loading".
  * - Block age is estimated from `latestBlock - log.blockNumber` * 12s
  *   instead of querying `eth_getBlockByNumber` per log. Off by a few
  *   seconds at most; saves N round-trips per refetch.
@@ -93,7 +96,8 @@ export type PairStats = {
 };
 
 const BLOCKS_24H = 7200n;
-const CHUNK = 5000n;
+// thirdweb caps getLogs at 1,000 blocks/call (error -32005 above that).
+const CHUNK = 900n;
 const ORDER_FILLED_EVENT = SCENTDEX_V5_ABI.find(
   (entry) => entry.type === "event" && entry.name === "OrderFilled",
 ) as Extract<(typeof SCENTDEX_V5_ABI)[number], { type: "event" }>;
