@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAccount, useSwitchChain } from "wagmi";
 
 import { SEPOLIA_CHAIN_ID } from "@/lib/contracts";
@@ -15,34 +15,106 @@ function routeTargetChain(pathname: string | null): number {
   return pathname?.startsWith("/sdttest") ? SEPOLIA_CHAIN_ID : TARGET_CHAIN_ID;
 }
 
+type Eip1193Provider = {
+  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+  on?: (event: string, handler: (...args: unknown[]) => void) => void;
+  removeListener?: (
+    event: string,
+    handler: (...args: unknown[]) => void,
+  ) => void;
+};
+
+function injectedProvider(): Eip1193Provider | undefined {
+  if (typeof window === "undefined") return undefined;
+  return (window as unknown as { ethereum?: Eip1193Provider }).ethereum;
+}
+
+/**
+ * The wallet's TRUE chain id, read straight from the injected EIP-1193
+ * provider (`eth_chainId`) and kept live via the `chainChanged` event.
+ *
+ * Why not wagmi's `useChainId()` / `useAccount().chainId`: with production
+ * pinned to a single configured chain (mainnet), both are normalised to a
+ * configured chain and report "1" even when MetaMask is really on Polygon.
+ * That defeated the wrong-network guard — orders could be signed from the
+ * wrong network (tester E-04). The provider read is ground truth and cannot
+ * be clamped. SCENTDEX is MetaMask-only, so `window.ethereum` is the wallet.
+ *
+ * Returns undefined until the first read resolves (or when no injected
+ * provider exists) — callers must treat undefined as "unknown", not "ok".
+ */
+export function useWalletChainId(): number | undefined {
+  const { status } = useAccount();
+  const [walletChainId, setWalletChainId] = useState<number | undefined>();
+
+  useEffect(() => {
+    if (status !== "connected") {
+      setWalletChainId(undefined);
+      return;
+    }
+    const eth = injectedProvider();
+    if (!eth?.request) return;
+
+    let active = true;
+    const apply = (hex: unknown) => {
+      if (active && typeof hex === "string") {
+        const n = parseInt(hex, 16);
+        if (Number.isFinite(n)) setWalletChainId(n);
+      }
+    };
+    void eth.request({ method: "eth_chainId" }).then(apply).catch(() => {});
+
+    const onChainChanged = (...args: unknown[]) => apply(args[0]);
+    eth.on?.("chainChanged", onChainChanged);
+    return () => {
+      active = false;
+      eth.removeListener?.("chainChanged", onChainChanged);
+    };
+  }, [status]);
+
+  return walletChainId;
+}
+
 /**
  * True when a wallet is connected but on a chain the current route does not
- * support.
- *
- * IMPORTANT: reads `useAccount().chainId` — the wallet's ACTUAL connected
- * chain — NOT `useChainId()`. With production pinned to a single configured
- * chain (mainnet), `useChainId()` is clamped to that chain and reports "1"
- * even when the wallet is really on Polygon/BSC/etc., which let a taker
- * place/fill orders from the wrong network with no warning (tester E-04).
- * `useAccount().chainId` reflects the connector's real chain.
+ * support — keyed off the provider's real chain (see useWalletChainId).
  */
 export function useIsWrongNetwork(): boolean {
-  const { status, chainId: walletChainId } = useAccount();
+  const { status } = useAccount();
+  const walletChainId = useWalletChainId();
   const pathname = usePathname();
   if (status !== "connected" || walletChainId === undefined) return false;
   return walletChainId !== routeTargetChain(pathname);
 }
 
 /**
+ * Read the wallet's current chain id on demand (not reactive). Use this as a
+ * hard gate right before requesting a signature, so a stale render can never
+ * let an order be signed on the wrong network even if the reactive hook lags.
+ * Returns undefined if it can't be determined.
+ */
+export async function readWalletChainId(): Promise<number | undefined> {
+  const eth = injectedProvider();
+  if (!eth?.request) return undefined;
+  try {
+    const hex = await eth.request({ method: "eth_chainId" });
+    if (typeof hex === "string") {
+      const n = parseInt(hex, 16);
+      return Number.isFinite(n) ? n : undefined;
+    }
+  } catch {
+    /* ignore */
+  }
+  return undefined;
+}
+
+export function targetChainForPath(pathname: string | null): number {
+  return routeTargetChain(pathname);
+}
+
+/**
  * Automatically prompts the connected wallet to switch to the route's
  * target chain whenever the user is on a different chain.
- *
- * Target resolution:
- *   - /sdttest…  → Sepolia (the SDT/WETH listing rehearsal market lives
- *     there and nowhere else). Without this carve-out the global guard
- *     would fight the test page by bouncing the wallet straight back to
- *     mainnet.
- *   - everywhere else → TARGET_CHAIN_ID (mainnet in production).
  *
  * - Fires once on connect, and again if the user manually switches away.
  * - If the wallet rejects the switch, RainbowKit's ConnectButton already
@@ -50,10 +122,11 @@ export function useIsWrongNetwork(): boolean {
  * - Only switches if the wallet is fully connected (not reconnecting/pending).
  */
 export function useNetworkGuard() {
-  // Wallet's REAL chain (see useIsWrongNetwork). useChainId() is clamped to a
+  // Real wallet chain (see useWalletChainId). wagmi's chainId is clamped to a
   // configured chain and would report the target even when the wallet is on
-  // an unconfigured chain, defeating the guard.
-  const { status, chainId } = useAccount();
+  // an unconfigured chain (Polygon/BSC/…), defeating the guard.
+  const { status } = useAccount();
+  const chainId = useWalletChainId();
   const { switchChain, isPending } = useSwitchChain();
   const pathname = usePathname();
 

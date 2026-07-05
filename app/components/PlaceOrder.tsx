@@ -24,7 +24,12 @@ import {
   type PermitSingle,
 } from "@/lib/permit2";
 import { useBestPrices } from "@/lib/hooks/useBestPrices";
-import { useIsWrongNetwork } from "@/lib/hooks/useNetworkGuard";
+import {
+  readWalletChainId,
+  targetChainForPath,
+  useIsWrongNetwork,
+} from "@/lib/hooks/useNetworkGuard";
+import { usePathname } from "next/navigation";
 import { useFillEvents } from "@/lib/hooks/useFillEvents";
 import { formatPrice } from "@/lib/format-price";
 import { useWeth } from "@/lib/hooks/useWeth";
@@ -36,6 +41,7 @@ import {
   useChainId,
   usePublicClient,
   useSignTypedData,
+  useSwitchChain,
 } from "wagmi";
 
 import { PERMIT2_ABI } from "@/lib/abi";
@@ -63,6 +69,8 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
   const { address: account, isConnected } = useAccount();
   const chainId = useChainId();
   const isWrongNetwork = useIsWrongNetwork();
+  const { switchChain } = useSwitchChain();
+  const pathname = usePathname();
   const dexAddress = SCENTDEX_V5_ADDRESS[chainId];
   // Direct viem client. Needed to read Permit2.allowance(maker, makerToken,
   // DEX).nonce SYNCHRONOUSLY at sign time so we never embed a stale nonce
@@ -346,8 +354,21 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weth.wrapError]);
 
-  function startSign() {
+  async function startSign() {
     if (!canSign || !account || !dexAddress) return;
+
+    // Hard wrong-network gate, re-read from the wallet provider at click time
+    // (not the reactive hook, which can lag or be clamped). Even if the
+    // button somehow enabled on the wrong chain, we never emit a signature
+    // request for a mainnet order while the wallet is elsewhere — we bounce
+    // it to the target chain instead (tester E-04).
+    const targetChain = targetChainForPath(pathname);
+    const liveChain = await readWalletChainId();
+    if (liveChain !== undefined && liveChain !== targetChain) {
+      setLastResult({ ok: false, error: t("trade.placeOrder.wrongNetwork") });
+      switchChain({ chainId: targetChain });
+      return;
+    }
 
     // Auto-wrap leg (WETH maker side only): top the WETH balance up to the
     // order size from native ETH before anything else. The effect above
@@ -374,6 +395,17 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
 
   async function confirmSign() {
     if (!pendingOrder || !dexAddress) return;
+
+    // Re-verify the wallet chain at the final signing step too — the user may
+    // have switched networks after the confirm modal opened (tester E-04).
+    const targetChain = targetChainForPath(pathname);
+    const liveChain = await readWalletChainId();
+    if (liveChain !== undefined && liveChain !== targetChain) {
+      setLastResult({ ok: false, error: t("trade.placeOrder.wrongNetwork") });
+      setModalOpen(false);
+      switchChain({ chainId: targetChain });
+      return;
+    }
 
     // Why two signatures and not one:
     //
