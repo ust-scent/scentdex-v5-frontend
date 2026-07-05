@@ -26,7 +26,7 @@ import { TARGET_CHAIN_ID } from "@/lib/wagmi";
 export function useNetworkGuard() {
   const { status } = useAccount();
   const chainId = useChainId();
-  const { switchChain } = useSwitchChain();
+  const { switchChain, isPending } = useSwitchChain();
   const pathname = usePathname();
 
   const target = pathname?.startsWith("/sdttest")
@@ -39,12 +39,20 @@ export function useNetworkGuard() {
 
   useEffect(() => {
     if (status !== "connected") return;
+    // While a switch is in flight, do NOTHING. wagmi optimistically flips
+    // chainId to the target mid-switch; without this guard that transient
+    // both (a) reset lastAttempted below and (b) — if the wallet then
+    // rejects and chainId reverts — re-fired the switch, producing a ~7Hz
+    // switchChain loop that flickered the whole trade UI on a wrong-network
+    // wallet. Serialising on isPending breaks that loop: after the switch
+    // settles we re-evaluate exactly once.
+    if (isPending) return;
     if (chainId === target) {
       lastAttempted.current = null; // reset so a future wrong-chain triggers again
       return;
     }
-    if (lastAttempted.current === chainId) return; // already asked, don't spam
+    if (lastAttempted.current === chainId) return; // already asked (or rejected), don't spam
     lastAttempted.current = chainId;
     switchChain({ chainId: target });
-  }, [status, chainId, switchChain, target]);
+  }, [status, chainId, switchChain, target, isPending]);
 }
