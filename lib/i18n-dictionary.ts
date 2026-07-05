@@ -176,6 +176,7 @@ export type Dictionary = {
   "trade.orderBook.hiddenTooltip": string;
   "trade.orderBook.hidden": string;
   "trade.orderBook.spread": string;
+  "trade.orderBook.mid": string;
   "trade.orderBook.statusLoading": string;
   "trade.orderBook.statusEmpty": string;
   "trade.orderBook.statusAggregated": string;
@@ -286,6 +287,7 @@ export type Dictionary = {
   "trade.statsBar.low24h": string;
   "trade.statsBar.makerFee": string;
   "trade.statsBar.makerFeeSuffix": string;
+  "trade.statsBar.lastPrice": string;
 
   // Trade page — order book crossed-state copy
   "trade.orderbook.crossedWarning": string;
@@ -614,6 +616,7 @@ const en: Dictionary = {
     "These orders' makers have insufficient balance or Permit2 allowance — fills would revert. Hidden so you don't waste gas.",
   "trade.orderBook.hidden": "{count} {orders} hidden (insufficient maker balance / allowance)",
   "trade.orderBook.spread": "Spread",
+  "trade.orderBook.mid": "Mid / best",
   "trade.orderBook.statusLoading": "loading…",
   "trade.orderBook.statusEmpty": "empty",
   "trade.orderBook.statusAggregated": "aggregated",
@@ -738,6 +741,7 @@ const en: Dictionary = {
   "trade.statsBar.low24h": "24H Low",
   "trade.statsBar.makerFee": "Maker Fee",
   "trade.statsBar.makerFeeSuffix": "deducted from receive on sell",
+  "trade.statsBar.lastPrice": "Last trade",
   "trade.orderbook.crossedWarning":
     "Orderbook crossed — arbitrage opportunity available",
   "trade.orderbook.crossed": "crossed",
@@ -1096,6 +1100,7 @@ const ja: Dictionary = {
     "これらの注文のメイカーは残高または Permit2 の許可が不足しています。リバートされるため非表示にしています。",
   "trade.orderBook.hidden": "{count} 件の注文が非表示（メイカーの残高・許可が不足）",
   "trade.orderBook.spread": "スプレッド",
+  "trade.orderBook.mid": "中値／最良",
   "trade.orderBook.statusLoading": "読込中…",
   "trade.orderBook.statusEmpty": "なし",
   "trade.orderBook.statusAggregated": "集計済み",
@@ -1218,6 +1223,7 @@ const ja: Dictionary = {
   "trade.statsBar.low24h": "24H 安値",
   "trade.statsBar.makerFee": "メイカー手数料",
   "trade.statsBar.makerFeeSuffix": "売り注文時、受取通貨から差引",
+  "trade.statsBar.lastPrice": "最終約定",
   "trade.orderbook.crossedWarning":
     "板が交差しています — アービトラージ機会あり",
   "trade.orderbook.crossed": "交差中",

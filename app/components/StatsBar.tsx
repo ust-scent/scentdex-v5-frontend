@@ -49,7 +49,7 @@ export function StatsBar({ pair }: { pair: Pair }) {
     <div className="px-3 sm:px-6 py-4 sm:py-5 border-b border-line">
       <div className="flex flex-wrap items-end gap-x-10 gap-y-3">
         <Field
-          label=""
+          label={t("trade.statsBar.lastPrice")}
           value={
             <div className="flex items-baseline gap-x-3 gap-y-1 flex-wrap">
               {hasPrice ? (

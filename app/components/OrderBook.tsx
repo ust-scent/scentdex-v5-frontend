@@ -203,7 +203,12 @@ export function OrderBook({ pair }: { pair: Pair }) {
               </div>
             ) : (
               <div className="flex items-center justify-between px-4 py-3 border-y border-line bg-white/[0.015]">
-                <span className="text-[18px] tnum">{formatPrice(midPrice)}</span>
+                <span className="flex items-baseline gap-2">
+                  <span className="text-[10px] uppercase tracking-[0.16em] text-fg-faint">
+                    {t("trade.orderBook.mid")}
+                  </span>
+                  <span className="text-[18px] tnum">{formatPrice(midPrice)}</span>
+                </span>
                 <span className="text-[11px] text-fg-faint">
                   {t("trade.orderBook.spread")}{" "}
                   <span className="tnum text-fg-dim">{formatPrice(spread)}</span>{" "}
