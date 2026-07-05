@@ -2,10 +2,36 @@
 
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
-import { useAccount, useChainId, useSwitchChain } from "wagmi";
+import { useAccount, useSwitchChain } from "wagmi";
 
 import { SEPOLIA_CHAIN_ID } from "@/lib/contracts";
 import { TARGET_CHAIN_ID } from "@/lib/wagmi";
+
+/**
+ * The chain this route requires. /sdttest is Sepolia-only (local dev);
+ * every other route wants TARGET_CHAIN_ID (mainnet in production).
+ */
+function routeTargetChain(pathname: string | null): number {
+  return pathname?.startsWith("/sdttest") ? SEPOLIA_CHAIN_ID : TARGET_CHAIN_ID;
+}
+
+/**
+ * True when a wallet is connected but on a chain the current route does not
+ * support.
+ *
+ * IMPORTANT: reads `useAccount().chainId` — the wallet's ACTUAL connected
+ * chain — NOT `useChainId()`. With production pinned to a single configured
+ * chain (mainnet), `useChainId()` is clamped to that chain and reports "1"
+ * even when the wallet is really on Polygon/BSC/etc., which let a taker
+ * place/fill orders from the wrong network with no warning (tester E-04).
+ * `useAccount().chainId` reflects the connector's real chain.
+ */
+export function useIsWrongNetwork(): boolean {
+  const { status, chainId: walletChainId } = useAccount();
+  const pathname = usePathname();
+  if (status !== "connected" || walletChainId === undefined) return false;
+  return walletChainId !== routeTargetChain(pathname);
+}
 
 /**
  * Automatically prompts the connected wallet to switch to the route's
@@ -24,21 +50,21 @@ import { TARGET_CHAIN_ID } from "@/lib/wagmi";
  * - Only switches if the wallet is fully connected (not reconnecting/pending).
  */
 export function useNetworkGuard() {
-  const { status } = useAccount();
-  const chainId = useChainId();
+  // Wallet's REAL chain (see useIsWrongNetwork). useChainId() is clamped to a
+  // configured chain and would report the target even when the wallet is on
+  // an unconfigured chain, defeating the guard.
+  const { status, chainId } = useAccount();
   const { switchChain, isPending } = useSwitchChain();
   const pathname = usePathname();
 
-  const target = pathname?.startsWith("/sdttest")
-    ? SEPOLIA_CHAIN_ID
-    : TARGET_CHAIN_ID;
+  const target = routeTargetChain(pathname);
 
   // Track the last chainId we attempted a switch for to avoid re-firing
   // on every render while the wallet processes the request.
   const lastAttempted = useRef<number | null>(null);
 
   useEffect(() => {
-    if (status !== "connected") return;
+    if (status !== "connected" || chainId === undefined) return;
     // While a switch is in flight, do NOTHING. wagmi optimistically flips
     // chainId to the target mid-switch; without this guard that transient
     // both (a) reset lastAttempted below and (b) — if the wallet then

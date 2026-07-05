@@ -57,6 +57,13 @@ export type FillabilityCheck = {
 type OrderInput = {
   orderHash: string;
   chainId: number;
+  /**
+   * makerToken already transferred by prior (partial) fills, as a decimal
+   * string. Fillability gates on the REMAINING amount (makerAmount − filled),
+   * not the original size — otherwise a maker who sold part of their order
+   * looks unfillable once their balance drops below the full amount.
+   */
+  filledMakerAmount?: string;
   order: {
     maker: Address;
     makerToken: Address;
@@ -65,8 +72,7 @@ type OrderInput = {
   /**
    * The Permit2 nonce baked into the maker's signed PermitSingle. When
    * present we read Permit2's current on-chain nonce for the same
-   * (owner, token, DEX) triple and flag the order unfillable if the
-   * two diverge. Optional so older callers / legacy rows still work.
+   * (owner, token, DEX) triple. Optional so older callers / legacy rows work.
    */
   permitSingle?: {
     details: {
@@ -159,7 +165,8 @@ export function useOrderFillability(orders: OrderInput[]): FillabilityCheck {
       const balanceR = data[i * 3];
       const allowanceR = data[i * 3 + 1];
       const permit2R = data[i * 3 + 2];
-      const need = safeBigInt(o.order.makerAmount);
+      const makerAmount = safeBigInt(o.order.makerAmount);
+      const filled = safeBigInt(o.filledMakerAmount ?? "0") ?? 0n;
 
       if (
         !balanceR ||
@@ -168,18 +175,24 @@ export function useOrderFillability(orders: OrderInput[]): FillabilityCheck {
         balanceR.status !== "success" ||
         allowanceR.status !== "success" ||
         permit2R.status !== "success" ||
-        need === null
+        makerAmount === null
       ) {
         status[o.orderHash] = "unknown";
         continue;
       }
+
+      // Gate on what's actually still fillable, not the original size.
+      const need = makerAmount > filled ? makerAmount - filled : 0n;
 
       const balance = balanceR.result as bigint;
       const erc20Allowance = allowanceR.result as bigint;
       // Permit2.allowance returns a (uint160 amount, uint48 expiration,
       // uint48 nonce) tuple. viem types it as a heterogeneous array.
       const permit2Tuple = permit2R.result as readonly [bigint, number, number];
+      const registeredAmount = permit2Tuple[0];
+      const registeredExpiration = BigInt(permit2Tuple[1]);
       const onChainNonce = BigInt(permit2Tuple[2]);
+      const nowSec = BigInt(Math.floor(Date.now() / 1000));
 
       // Skip nonce check for legacy rows that don't carry a signed
       // permitSingle.nonce; preserve their previous fillability story.
@@ -189,9 +202,19 @@ export function useOrderFillability(orders: OrderInput[]): FillabilityCheck {
           ? null
           : safeBigInt(String(signedNonceRaw));
 
-      const nonceOk = signedNonce === null || signedNonce === onChainNonce;
+      // The maker's Permit2 authorisation is usable for THIS fill if either:
+      //  - the signed nonce still matches on-chain (first fill — the taker
+      //    will submit the stored permit, which registers the allowance), OR
+      //  - a prior (partial) fill already registered an allowance that still
+      //    covers the remaining amount and hasn't expired (subsequent fills
+      //    reuse it with an empty permit; the signed nonce has advanced).
+      // Without the second branch, every partially-filled order was flagged
+      // unfillable and vanished from the board (tester H-05).
+      const permitUsable =
+        (signedNonce !== null && signedNonce === onChainNonce) ||
+        (registeredAmount >= need && registeredExpiration > nowSec);
 
-      if (balance >= need && erc20Allowance >= need && nonceOk) {
+      if (need > 0n && balance >= need && erc20Allowance >= need && permitUsable) {
         status[o.orderHash] = "fillable";
       } else {
         status[o.orderHash] = "unfillable";

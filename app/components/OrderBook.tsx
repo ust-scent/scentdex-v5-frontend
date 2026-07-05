@@ -385,16 +385,26 @@ function deriveBook(orders: ApiOrder[], pair: Pair, chainId: number) {
     const baseDecimals = baseToken.decimals;
     const quoteDecimals = quoteToken.decimals;
 
+    // Partial fills: the board must show what's still buyable (remaining),
+    // not the original size. Price stays the order's constant unit price
+    // (computed from the FULL amounts), only the displayed quantity shrinks.
+    const filledMaker = BigInt(o.filledMakerAmount ?? "0");
+    const remainingMaker =
+      makerAmount > filledMaker ? makerAmount - filledMaker : 0n;
+    if (remainingMaker === 0n) continue; // fully filled — nothing left to show
+
     let amount: number;
     let price: number;
     if (isSell) {
-      amount = Number(formatUnits(makerAmount, baseDecimals));
-      const quote = Number(formatUnits(takerAmount, quoteDecimals));
-      price = quote / amount;
+      const fullBase = Number(formatUnits(makerAmount, baseDecimals));
+      price = Number(formatUnits(takerAmount, quoteDecimals)) / fullBase;
+      amount = Number(formatUnits(remainingMaker, baseDecimals));
     } else {
-      amount = Number(formatUnits(takerAmount, baseDecimals));
-      const quote = Number(formatUnits(makerAmount, quoteDecimals));
-      price = quote / amount;
+      const fullBase = Number(formatUnits(takerAmount, baseDecimals));
+      price = Number(formatUnits(makerAmount, quoteDecimals)) / fullBase;
+      // remaining base = takerAmount × remainingMaker / makerAmount
+      const remainingBase = (takerAmount * remainingMaker) / makerAmount;
+      amount = Number(formatUnits(remainingBase, baseDecimals));
     }
 
     const row: Row = {

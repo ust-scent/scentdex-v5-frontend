@@ -14,8 +14,10 @@ import {
 
 import { SCENTDEX_V5_ABI } from "@/lib/abi";
 import { TermsConsentCheckbox } from "@/app/components/TermsConsentCheckbox";
-import { SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
+import { PERMIT2_ABI } from "@/lib/abi";
+import { PERMIT2_ADDRESS, SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
 import { useTranslator } from "@/lib/locale-context";
+import { useIsWrongNetwork } from "@/lib/hooks/useNetworkGuard";
 import { useTokenStatus } from "@/lib/hooks/useTokenStatus";
 import { useWeth } from "@/lib/hooks/useWeth";
 import { fetchRevertError, parseFillError } from "@/lib/parse-fill-error";
@@ -189,6 +191,7 @@ export function FillModal({
   // WETH balance can't cover the fill, a WETH9.deposit() leg is inserted
   // before the approve/permit/fill pipeline. Inert on non-WETH pairs.
   const weth = useWeth();
+  const isWrongNetwork = useIsWrongNetwork();
 
   const t = useTranslator();
   const { signTypedDataAsync, isPending: signing } = useSignTypedData();
@@ -487,7 +490,10 @@ export function FillModal({
 
   const notSelf =
     account && order.order.maker.toLowerCase() !== account.toLowerCase();
-  const onSupportedChain = Boolean(dexAddress);
+  // onSupportedChain must reflect the wallet's REAL chain: dexAddress is keyed
+  // off the clamped useChainId (mainnet even on Polygon), so without the
+  // wrong-network check a taker on Polygon could try to fill (tester E-04).
+  const onSupportedChain = Boolean(dexAddress) && !isWrongNetwork;
   const hasMakerPermit = Boolean(order.permitSingle && order.permitSignature);
   const isAlreadyDone =
     phase === "done" ||
@@ -593,7 +599,37 @@ export function FillModal({
     }
 
     // 2) fillOrder() on-chain.
-    const makerPermitReified = reifyPermitSingle(order.permitSingle!);
+    //
+    // Partial-fill correctness: the maker's stored PermitSingle is single-use
+    // — its Permit2 nonce is consumed the first time _fillOrder calls
+    // permit2.permit(). Re-submitting it for a later fill of the REMAINING
+    // amount reverts InvalidNonce (tester H-05). The contract skips the
+    // permit() call when makerPermitSignature is empty (ScentDexV6:1159),
+    // pulling instead against the allowance the first fill already
+    // registered. So: if the maker's registered Permit2 allowance already
+    // covers this fill and hasn't expired, send an EMPTY maker permit;
+    // otherwise send the stored one (first fill, which registers it).
+    let makerPermitStruct = reifyPermitSingle(order.permitSingle!);
+    let makerPermitSig: Hex = order.permitSignature as Hex;
+    if (publicClient) {
+      try {
+        const [regAmount, regExpiration] = (await publicClient.readContract({
+          address: PERMIT2_ADDRESS,
+          abi: PERMIT2_ABI,
+          functionName: "allowance",
+          args: [order.order.maker, order.order.makerToken, dexAddress],
+        })) as readonly [bigint, number, number];
+        const nowSec = BigInt(Math.floor(Date.now() / 1000));
+        if (regAmount >= fillMaker && BigInt(regExpiration) > nowSec) {
+          makerPermitStruct = EMPTY_PERMIT_SINGLE;
+          makerPermitSig = "0x";
+        }
+      } catch {
+        // RPC hiccup — fall back to the stored permit (correct for the
+        // first fill; a redundant re-permit on a later fill would revert,
+        // surfaced to the taker as a normal fill error).
+      }
+    }
 
     const fillArgs = [
       {
@@ -623,15 +659,15 @@ export function FillModal({
       takerPermitSig,
       {
         details: {
-          token: makerPermitReified.details.token,
-          amount: makerPermitReified.details.amount,
-          expiration: makerPermitReified.details.expiration,
-          nonce: makerPermitReified.details.nonce,
+          token: makerPermitStruct.details.token,
+          amount: makerPermitStruct.details.amount,
+          expiration: makerPermitStruct.details.expiration,
+          nonce: makerPermitStruct.details.nonce,
         },
-        spender: makerPermitReified.spender,
-        sigDeadline: makerPermitReified.sigDeadline,
+        spender: makerPermitStruct.spender,
+        sigDeadline: makerPermitStruct.sigDeadline,
       },
-      order.permitSignature as Hex,
+      makerPermitSig,
     ] as const;
 
     try {
@@ -1134,9 +1170,7 @@ function proportionalTakerAmount(
   return rawCeil > remainingTakerQuota ? remainingTakerQuota : rawCeil;
 }
 
-// Silence "unused" lint for the empty-permit constants — kept exported in
-// permit2.ts for future legacy-order paths but referenced here for the
-// pattern they document.
-void EMPTY_PERMIT_SINGLE;
+// Silence "unused" lint for the empty-permit constants still imported for
+// symmetry but not referenced directly here.
 void EMPTY_PERMIT_SIGNATURE;
 void serialisePermitSingle;

@@ -24,6 +24,7 @@ import {
   type PermitSingle,
 } from "@/lib/permit2";
 import { useBestPrices } from "@/lib/hooks/useBestPrices";
+import { useIsWrongNetwork } from "@/lib/hooks/useNetworkGuard";
 import { useFillEvents } from "@/lib/hooks/useFillEvents";
 import { formatPrice } from "@/lib/format-price";
 import { useWeth } from "@/lib/hooks/useWeth";
@@ -61,6 +62,7 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
 
   const { address: account, isConnected } = useAccount();
   const chainId = useChainId();
+  const isWrongNetwork = useIsWrongNetwork();
   const dexAddress = SCENTDEX_V5_ADDRESS[chainId];
   // Direct viem client. Needed to read Permit2.allowance(maker, makerToken,
   // DEX).nonce SYNCHRONOUSLY at sign time so we never embed a stale nonce
@@ -196,7 +198,12 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
   // -- Reasons we can't sign yet ---------------------------------------
   const reasons: string[] = [];
   if (!isConnected) reasons.push(t("trade.placeOrder.connectWallet"));
-  if (!dexAddress) reasons.push(t("trade.placeOrder.wrongNetwork"));
+  // Wrong-network gate keyed off the wallet's REAL chain (useIsWrongNetwork),
+  // not useChainId() — on a single-chain prod config useChainId is clamped to
+  // mainnet even when the wallet is on Polygon, which let orders be signed
+  // from the wrong network (tester E-04).
+  if (isConnected && isWrongNetwork) reasons.push(t("trade.placeOrder.wrongNetwork"));
+  else if (!dexAddress) reasons.push(t("trade.placeOrder.wrongNetwork"));
   if (
     dexAddress &&
     (!baseToken.addresses[chainId] || !quoteToken.addresses[chainId])
