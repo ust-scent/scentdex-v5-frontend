@@ -22,8 +22,8 @@ export function StatsBar({ pair }: { pair: Pair }) {
   const stats = useFillEvents(pair);
   const cfg = usePairConfig(pair);
 
-  const priceText =
-    stats.latestPrice !== undefined ? formatPrice(stats.latestPrice) : "—";
+  const hasPrice = stats.latestPrice !== undefined;
+  const priceText = hasPrice ? formatPrice(stats.latestPrice) : "—";
   const changeText =
     stats.priceChange24h !== undefined ? fmtChange(stats.priceChange24h) : "—";
   const positive = (stats.priceChange24h ?? 0) >= 0;
@@ -51,10 +51,20 @@ export function StatsBar({ pair }: { pair: Pair }) {
         <Field
           label=""
           value={
-            <div className="flex items-baseline gap-3">
+            <div className="flex items-baseline gap-x-3 gap-y-1 flex-wrap">
+              {hasPrice ? (
+                <span className="text-sm text-fg-dim tnum whitespace-nowrap">
+                  1 {symbolLabel(pair.base)} =
+                </span>
+              ) : null}
               <span className="text-[34px] font-medium tracking-tight tnum">
                 {priceText}
               </span>
+              {hasPrice ? (
+                <span className="text-lg font-medium text-fg-dim">
+                  {symbolLabel(pair.quote)}
+                </span>
+              ) : null}
               <span
                 className={`text-sm tnum ${
                   stats.priceChange24h === undefined
