@@ -55,9 +55,18 @@ export const wagmiConfig = getDefaultConfig({
     ...Chain[],
   ],
   transports: {
+    // Ordering matters for eth_getLogs (the 24h fill index behind Recent
+    // Trades + StatsBar). Most free public mainnet RPCs reject getLogs as an
+    // "archive" request (publicnode, ankr) or 500 (cloudflare); thirdweb is
+    // the one confirmed to serve it anonymously from the browser, so it goes
+    // FIRST. Alchemy would be ideal but the configured key is currently dead
+    // (returns non-JSON) — keeping it ahead of thirdweb left getLogs failing
+    // because viem's fallback didn't cleanly rotate past it, so it's demoted
+    // below the known-good endpoint. Refresh NEXT_PUBLIC_ALCHEMY_MAINNET_URL
+    // and it can move back to the front.
     [mainnet.id]: fallback([
-      ...(ALCHEMY_MAINNET ? [http(ALCHEMY_MAINNET)] : []),
       http("https://1.rpc.thirdweb.com"),
+      ...(ALCHEMY_MAINNET ? [http(ALCHEMY_MAINNET)] : []),
       http("https://eth.llamarpc.com"),
       http("https://cloudflare-eth.com"),
       http("https://ethereum-rpc.publicnode.com"),

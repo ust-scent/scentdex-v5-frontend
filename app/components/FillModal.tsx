@@ -406,6 +406,21 @@ export function FillModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, weth.isWrapConfirmed]);
 
+  // Auto-advance once the taker's ERC-20 → Permit2 approval confirms.
+  // Without this the modal parked on "WETH を承認中…" after the approve tx
+  // had already landed on-chain, and the taker had to click that
+  // loading-looking button again to reach the permit-sign + fillOrder step
+  // (tester: "承認中のボタンを押したらパーミットに進んだ"). Mirrors the
+  // wrap-advance effect above.
+  useEffect(() => {
+    if (phase !== "approving-erc20") return;
+    if (takerStatus.isApproving) return; // still submitting / confirming
+    if (!takerStatus.isErc20Approved) return; // not landed yet (or rejected)
+    setPhase("idle");
+    void onFillClick();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, takerStatus.isApproving, takerStatus.isErc20Approved]);
+
   // Surface a wrap failure (user reject / RPC error) via the normal error
   // phase instead of leaving the modal stuck on "wrapping".
   useEffect(() => {
