@@ -1,20 +1,13 @@
 "use client";
 
-import { useMemo } from "react";
-import { formatUnits } from "viem";
-import { useAccount, useChainId } from "wagmi";
-
 import { BottomTabs } from "@/app/components/BottomTabs";
 import { OrderBook } from "@/app/components/OrderBook";
 import { PlaceOrder } from "@/app/components/PlaceOrder";
 import { RecentTrades } from "@/app/components/RecentTrades";
 import { StatsBar } from "@/app/components/StatsBar";
-import { SEPOLIA_CHAIN_ID } from "@/lib/contracts";
-import { useTokenStatus } from "@/lib/hooks/useTokenStatus";
-import { useWeth } from "@/lib/hooks/useWeth";
 import { type SupportedLocale } from "@/lib/i18n";
-import { LocaleProvider, useTranslator } from "@/lib/locale-context";
-import { SDTTEST_PAIR, symbolLabel, TOKENS } from "@/lib/tokens";
+import { LocaleProvider } from "@/lib/locale-context";
+import { SDTTEST_PAIR } from "@/lib/tokens";
 
 /**
  * SDT/WETH test market client (Sepolia only).
@@ -27,6 +20,11 @@ import { SDTTEST_PAIR, symbolLabel, TOKENS } from "@/lib/tokens";
  * Env-gated: until NEXT_PUBLIC_SDTTEST_DEX_ADDRESS and
  * NEXT_PUBLIC_SDTTEST_SDT_ADDRESS are set (post-deploy), the page renders
  * a "not live yet" notice instead of a dead trading UI.
+ *
+ * 2026-07-05 (Alex): the ETH↔WETH explainer + faucet/unwrap helper strip
+ * was removed so this page's UX matches what production /trade will ship
+ * (test-what-you-ship). Tester funding is handled by ops-side transfers;
+ * MockERC20.mint stays callable directly on-chain if ever needed.
  */
 
 const DEX_LIVE = Boolean(process.env.NEXT_PUBLIC_SDTTEST_DEX_ADDRESS);
@@ -47,7 +45,6 @@ export function SdtTestClient({
         ) : (
           <>
             <StatsBar pair={SDTTEST_PAIR} />
-            <EthWethBar />
 
             <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr_1fr] gap-3 px-3 sm:px-6 py-3 sm:py-4">
               <OrderBook pair={SDTTEST_PAIR} />
@@ -81,93 +78,3 @@ function NotLiveNotice() {
   );
 }
 
-/**
- * ETH / WETH balance strip with faucet + unwrap helpers.
- *
- * - ETH is what the user thinks in; WETH is the on-chain trading leg.
- * - "Unwrap all" returns received WETH to native ETH in one click.
- * - The SDT faucet mints 1,000 test SDT so a fresh wallet can play the
- *   sell side immediately.
- */
-function EthWethBar() {
-  const t = useTranslator();
-  const { isConnected } = useAccount();
-  const chainId = useChainId();
-  const weth = useWeth();
-  const sdtToken = useMemo(
-    () => TOKENS.find((t) => t.symbol === "SDT-TEST")!,
-    [],
-  );
-  const sdtStatus = useTokenStatus(sdtToken);
-  const wethToken = useMemo(
-    () => TOKENS.find((t) => t.symbol === "WETH-TEST")!,
-    [],
-  );
-  // MockWETH exposes the same open mint() as MockERC20, so the standard
-  // token-status faucet works for WETH-TEST too (no ETH-wrapping needed
-  // to obtain test liquidity).
-  const wethMintStatus = useTokenStatus(wethToken);
-  const onSepolia = chainId === SEPOLIA_CHAIN_ID;
-
-  if (!isConnected || !onSepolia) return null;
-
-  return (
-    <div className="px-3 sm:px-6 pt-3 space-y-2">
-      {/* First-time explainer: ETH and WETH are the same asset, auto-converted. */}
-      <div className="rounded-md border border-indigo-400/30 bg-indigo-400/[0.06] px-4 py-2.5 flex items-start gap-2">
-        <span aria-hidden="true" className="text-indigo-300 text-[13px] mt-[1px]">ⓘ</span>
-        <p className="text-[12px] text-fg-dim leading-relaxed">
-          <span className="text-fg">{t("sdttest.ethWeth.lead")}</span>{" "}
-          {t("sdttest.ethWeth.body")}
-        </p>
-      </div>
-      <div className="rounded-md border border-line bg-white/[0.02] px-4 py-3 flex flex-wrap items-center gap-x-8 gap-y-2">
-        <BalanceItem label="ETH" value={fmt(weth.ethBalance)} />
-        <BalanceItem label={symbolLabel("WETH-TEST")} value={fmt(weth.wethBalance)} />
-        <BalanceItem label={symbolLabel("SDT-TEST")} value={fmt(sdtStatus.balance)} />
-        <div className="flex items-center gap-2 ml-auto">
-          <button
-            onClick={() => weth.unwrap(weth.wethBalance)}
-            disabled={weth.wethBalance === 0n || weth.isUnwrapping}
-            className="px-3 py-1.5 rounded-md border border-line text-[12px] text-fg-dim hover:text-fg hover:border-line-strong disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {weth.isUnwrapping ? t("sdttest.unwrapping") : t("sdttest.unwrap")}
-          </button>
-          <button
-            onClick={() => sdtStatus.mintDefault()}
-            disabled={sdtStatus.isMinting}
-            className="px-3 py-1.5 rounded-md border border-line text-[12px] text-fg-dim hover:text-fg hover:border-line-strong disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {sdtStatus.isMinting ? t("sdttest.faucet.minting") : t("sdttest.faucet.sdt")}
-          </button>
-          <button
-            onClick={() => wethMintStatus.mintDefault()}
-            disabled={wethMintStatus.isMinting}
-            className="px-3 py-1.5 rounded-md border border-line text-[12px] text-fg-dim hover:text-fg hover:border-line-strong disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {wethMintStatus.isMinting ? t("sdttest.faucet.minting") : t("sdttest.faucet.weth")}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function BalanceItem({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-baseline gap-2">
-      <span className="text-[10px] uppercase tracking-[0.14em] text-fg-faint">
-        {label}
-      </span>
-      <span className="font-mono tnum text-[14px]">{value}</span>
-    </div>
-  );
-}
-
-function fmt(raw: bigint): string {
-  const s = formatUnits(raw, 18);
-  const [whole, frac = ""] = s.split(".");
-  const fracTrimmed = frac.slice(0, 4).replace(/0+$/, "");
-  const wholeFmt = Number(whole).toLocaleString("en-US");
-  return fracTrimmed ? `${wholeFmt}.${fracTrimmed}` : wholeFmt;
-}
