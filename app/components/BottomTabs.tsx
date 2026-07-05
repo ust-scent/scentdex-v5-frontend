@@ -54,6 +54,12 @@ function useMyOrders(chainId: number) {
     let timer: ReturnType<typeof setTimeout> | null = null;
     const lower = address?.toLowerCase();
 
+    // Loading is a first-paint signal for THIS effect run (mount, wallet /
+    // chain switch, manual refresh) — not a per-poll one. Re-arming it on
+    // every 3s tick made the empty state flap between 読み込み中… and
+    // ありません — a visible flicker across the whole bottom tab.
+    if (lower) setLoading(true);
+
     async function fetchOnce() {
       if (cancelled) return;
       if (!lower) {
@@ -61,7 +67,6 @@ function useMyOrders(chainId: number) {
         setLoading(false);
         return;
       }
-      setLoading(true);
       try {
         const res = await fetch(
           `/api/orders?chainId=${chainId}`,
