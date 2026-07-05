@@ -256,6 +256,70 @@ export async function findOrder(orderHash: string): Promise<StoredOrder | null> 
   return memOrders().get(orderHash) ?? null;
 }
 
+/** Token/amount shape needed to derive the last traded price of a pair. */
+export type LastTrade = {
+  makerToken: string;
+  takerToken: string;
+  makerAmount: string;
+  takerAmount: string;
+};
+
+/**
+ * The most recently FILLED (or partially-filled) order for a pair — its
+ * unit price is the last traded price. `markFilled` bumps `updated_at` on
+ * every fill, so ordering by it surfaces the latest trade even if it is
+ * older than the 24h on-chain stats window (so the StatsBar price persists
+ * instead of blanking to "—" on a quiet pair).
+ */
+export async function lastTrade(
+  pair: string,
+  chainId: number,
+): Promise<LastTrade | null> {
+  if (isDbAvailable()) {
+    const result = await query<{
+      maker_token: string;
+      taker_token: string;
+      maker_amount: string;
+      taker_amount: string;
+    }>(
+      `SELECT maker_token, taker_token, maker_amount, taker_amount
+         FROM orders
+        WHERE pair = $1 AND chain_id = $2
+          AND status IN ('filled','partially-filled')
+        ORDER BY updated_at DESC
+        LIMIT 1`,
+      [pair, chainId],
+    );
+    const row = result?.rows[0];
+    return row
+      ? {
+          makerToken: row.maker_token,
+          takerToken: row.taker_token,
+          makerAmount: row.maker_amount,
+          takerAmount: row.taker_amount,
+        }
+      : null;
+  }
+  // Memory backend (local dev): no updated_at, approximate by createdAt.
+  const filled = Array.from(memOrders().values())
+    .filter(
+      (o) =>
+        o.pair === pair &&
+        o.chainId === chainId &&
+        (o.status === "filled" || o.status === "partially-filled"),
+    )
+    .sort((a, b) => b.createdAt - a.createdAt);
+  const o = filled[0];
+  return o
+    ? {
+        makerToken: o.order.makerToken,
+        takerToken: o.order.takerToken,
+        makerAmount: o.order.makerAmount,
+        takerAmount: o.order.takerAmount,
+      }
+    : null;
+}
+
 /**
  * Off-chain cancel: marks the order cancelled and records a `cancelled` event.
  * The taker side will see the order disappear on the next /api/orders read.

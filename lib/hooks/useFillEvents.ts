@@ -215,6 +215,50 @@ export function useFillEvents(pair: Pair): PairStats {
     },
   });
 
+  // Persistent last-traded-price fallback from the off-chain book (records
+  // every fill). When the 24h on-chain window has no fills, the StatsBar
+  // price sticks at the last trade instead of blanking to "—" on a quiet
+  // pair. 24h stats (change / volume / high / low) stay window-scoped.
+  const pairKey = `${pair.base}/${pair.quote}`;
+  const { data: lastTradePrice } = useQuery<number | undefined>({
+    queryKey: ["scentdex.lastPrice", chainId, pairKey],
+    enabled: Boolean(baseToken && quoteToken && baseAddr && quoteAddr),
+    refetchInterval: 30_000,
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/last-price?pair=${encodeURIComponent(pairKey)}&chainId=${chainId}`,
+      );
+      if (!res.ok) return undefined;
+      const { trade } = (await res.json()) as {
+        trade: {
+          makerToken: string;
+          takerToken: string;
+          makerAmount: string;
+          takerAmount: string;
+        } | null;
+      };
+      if (!trade || !baseToken || !quoteToken || !baseAddr || !quoteAddr) {
+        return undefined;
+      }
+      const mt = trade.makerToken.toLowerCase();
+      const tt = trade.takerToken.toLowerCase();
+      const makerAmount = BigInt(trade.makerAmount);
+      const takerAmount = BigInt(trade.takerAmount);
+      if (makerAmount === 0n || takerAmount === 0n) return undefined;
+      if (mt === baseAddr && tt === quoteAddr) {
+        const base = Number(formatUnits(makerAmount, baseToken.decimals));
+        const quote = Number(formatUnits(takerAmount, quoteToken.decimals));
+        return base > 0 ? quote / base : undefined;
+      }
+      if (mt === quoteAddr && tt === baseAddr) {
+        const base = Number(formatUnits(takerAmount, baseToken.decimals));
+        const quote = Number(formatUnits(makerAmount, quoteToken.decimals));
+        return base > 0 ? quote / base : undefined;
+      }
+      return undefined;
+    },
+  });
+
   return useMemo<PairStats>(() => {
     const list = data ?? [];
     if (list.length === 0) {
@@ -222,7 +266,8 @@ export function useFillEvents(pair: Pair): PairStats {
         fills: [],
         loading: isLoading,
         error,
-        latestPrice: undefined,
+        // Persist the last traded price even outside the 24h window.
+        latestPrice: lastTradePrice,
         priceChange24h: undefined,
         volume24h: 0,
         high24h: undefined,
@@ -249,7 +294,7 @@ export function useFillEvents(pair: Pair): PairStats {
       high24h,
       low24h,
     };
-  }, [data, isLoading, error]);
+  }, [data, isLoading, error, lastTradePrice]);
 }
 
 async function fetchFillLogs(
