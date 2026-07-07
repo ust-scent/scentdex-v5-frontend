@@ -178,6 +178,11 @@ export type Pair = {
  * the current chain is filtered out (e.g. SDO pairs disappear on mainnet).
  */
 export const PAIRS: Pair[] = [
+  // SDT/WETH — mainnet flagship listing (V6 bring-up 2026-07-05). Mainnet-only:
+  // both tokens have no Sepolia address, so `pairsForChain` drops it on testnet.
+  // First entry so it is the default /trade tab (see `SDT_MAINNET_PAIR` below —
+  // this IS the official-release cutover: one PAIRS line, /sdt now redirects).
+  { base: "SDT", quote: "WETH" },
   { base: "SCENT", quote: "JPYC" },
   { base: "SCENT", quote: "USDT" },
   { base: "SDO", quote: "USDT" },
