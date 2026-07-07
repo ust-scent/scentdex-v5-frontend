@@ -1,4 +1,11 @@
 import { getDefaultConfig } from "@rainbow-me/rainbowkit";
+import {
+  coinbaseWallet,
+  injectedWallet,
+  metaMaskWallet,
+  rainbowWallet,
+  walletConnectWallet,
+} from "@rainbow-me/rainbowkit/wallets";
 import { fallback, http } from "viem";
 import { mainnet, sepolia, type Chain } from "wagmi/chains";
 
@@ -48,6 +55,36 @@ export const wagmiConfig = getDefaultConfig({
   appUrl: "https://dex.scenttoken.com",
   appIcon: "https://dex.scenttoken.com/logo.png",
   projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "scentdex-dev",
+  // Wallet list — MetaMask discoverability with multiple extensions installed.
+  //
+  // getDefaultConfig's default list carries MetaMask ONLY as the hardcoded
+  // `metaMaskWallet`, whose "Installed" state is `isMetaMask(window.ethereum)`.
+  // When another extension (Coinbase, Rabby, Phantom…) wins the window.ethereum
+  // injection race, that check is false, so MetaMask drops out of the modal's
+  // "Installed" group and its remaining entry routes to a WalletConnect QR
+  // instead of the installed extension — users report "MetaMask is missing".
+  //
+  // Fix: keep wagmi's EIP-6963 discovery ON (see multiInjectedProviderDiscovery
+  // below) so every announcing extension is listed under "Installed" regardless
+  // of who owns window.ethereum, and add `injectedWallet` as a catch-all so a
+  // MetaMask that owns window.ethereum but skipped its EIP-6963 announcement
+  // still surfaces and connects to the extension (never the QR path).
+  wallets: [
+    {
+      groupName: "Recommended",
+      wallets: [
+        injectedWallet,
+        metaMaskWallet,
+        coinbaseWallet,
+        rainbowWallet,
+        walletConnectWallet,
+      ],
+    },
+  ],
+  // EIP-6963 multi-injected provider discovery. This is wagmi's default (true),
+  // set explicitly so the multi-wallet behavior above can't silently regress if
+  // the upstream default ever changes.
+  multiInjectedProviderDiscovery: true,
   // Mainnet only in production. Sepolia is added back when
   // NEXT_PUBLIC_ENABLE_SEPOLIA=1 (local dev / regression).
   chains: (ENABLE_SEPOLIA ? [mainnet, sepolia] : [mainnet]) as readonly [
