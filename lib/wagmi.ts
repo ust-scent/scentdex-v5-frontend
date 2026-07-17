@@ -4,6 +4,7 @@ import {
   injectedWallet,
   metaMaskWallet,
   phantomWallet,
+  rabbyWallet,
   rainbowWallet,
   walletConnectWallet,
 } from "@rainbow-me/rainbowkit/wallets";
@@ -71,12 +72,16 @@ export const wagmiConfig = getDefaultConfig({
   // MetaMask that owns window.ethereum but skipped its EIP-6963 announcement
   // still surfaces and connects to the extension (never the QR path).
   //
-  // Phantom: Solana-native but ships an EVM provider (window.phantom.ethereum,
-  // announced over EIP-6963), so on this EVM DEX it behaves like any other
-  // injected wallet. `phantomWallet` gives it a dedicated branded entry — when
-  // the extension is installed it connects directly (deduped against the
-  // EIP-6963-discovered instance by rdns app.phantom, so no double entry); when
-  // it isn't, RainbowKit's built-in get-the-wallet flow points to phantom.app.
+  // Phantom / Rabby: both are EIP-6963 announcers, so with the discovery above
+  // they already connect when installed. Listing them explicitly adds two things
+  // the discovery alone can't: a dedicated branded button that is present even
+  // when the extension isn't (RainbowKit's built-in get-the-wallet flow then
+  // points at phantom.app / rabby.io), and a stable entry that doesn't depend on
+  // winning the window.ethereum race. Each is deduped against its discovered
+  // instance by rdns (app.phantom / io.rabby), so no wallet is listed twice.
+  //
+  // Phantom is Solana-native but ships an EVM provider (window.phantom.ethereum),
+  // so on this EVM DEX it behaves like any other injected wallet.
   wallets: [
     {
       groupName: "Recommended",
@@ -84,6 +89,7 @@ export const wagmiConfig = getDefaultConfig({
         injectedWallet,
         metaMaskWallet,
         phantomWallet,
+        rabbyWallet,
         coinbaseWallet,
         rainbowWallet,
         walletConnectWallet,
