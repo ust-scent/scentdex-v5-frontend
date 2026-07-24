@@ -62,8 +62,23 @@ body {
  * so other wallets can be brought back simply by deleting this block.
  * `[data-testid^="rk-wallet-option-"]` matches all wallet buttons that
  * RainbowKit injects into the modal; the `:not(...)` carve-out keeps
- * the MetaMask one visible. */
-[data-testid^="rk-wallet-option-"]:not([data-testid="rk-wallet-option-metaMask"]) {
+ * the MetaMask one visible.
+ * 2026-07-24: allow-list extended to Phantom and Rabby per Alex's
+ * decision. Each wallet needs BOTH testid variants: RainbowKit renders
+ * the explicit wallet-list id (`phantom`, `rabby`, `metaMask`) when the
+ * extension is absent, but the EIP-6963 rdns id (`app.phantom`,
+ * `io.rabby`, `io.metamask`) when the installed extension announces
+ * itself and wins the dedupe. Every other wallet (Coinbase, Rainbow,
+ * WalletConnect, generic injected, …) stays hidden — this is NOT a full
+ * unhide; the reduced-surface policy from 2026-05-16 still stands. */
+[data-testid^="rk-wallet-option-"]:not(
+    [data-testid="rk-wallet-option-metaMask"],
+    [data-testid="rk-wallet-option-io.metamask"],
+    [data-testid="rk-wallet-option-phantom"],
+    [data-testid="rk-wallet-option-app.phantom"],
+    [data-testid="rk-wallet-option-rabby"],
+    [data-testid="rk-wallet-option-io.rabby"]
+  ) {
   display: none !important;
 }
 
