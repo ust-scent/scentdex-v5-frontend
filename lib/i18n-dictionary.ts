@@ -342,6 +342,7 @@ export type Dictionary = {
   "trade.fillModal.cantFillOwn": string;
   "trade.fillModal.missingPermit": string;
   "trade.fillModal.switchNetwork": string;
+  "trade.fillModal.insufficientTakerBalance": string;
   "trade.fillModal.settled": string;
   "trade.fillModal.button.filled": string;
   "trade.fillModal.button.approving": string;
@@ -817,6 +818,8 @@ const en: Dictionary = {
   "trade.fillModal.missingPermit":
     "This order is missing the per-order Permit2 signature (legacy). The maker needs to re-post it.",
   "trade.fillModal.switchNetwork": "Switch to a supported network to fill.",
+  "trade.fillModal.insufficientTakerBalance":
+    "Not enough {symbol} to pay for this fill (balance: {balance} {symbol} / needed: {needed} {symbol}).",
   "trade.fillModal.settled": "Filled — settlement confirmed on-chain.",
   "trade.fillModal.button.filled": "Filled",
   "trade.fillModal.button.approving": "Approving {symbol}…",
@@ -1300,6 +1303,8 @@ const ja: Dictionary = {
   "trade.fillModal.missingPermit":
     "この注文には注文単位の Permit2 署名がありません（旧形式）。メイカーが再投稿する必要があります。",
   "trade.fillModal.switchNetwork": "対応ネットワークに切り替えて約定してください。",
+  "trade.fillModal.insufficientTakerBalance":
+    "支払いに必要な {symbol} が足りません（残高: {balance} {symbol} / 必要: {needed} {symbol}）。",
   "trade.fillModal.settled": "約定済み — オンチェーンで確定しました。",
   "trade.fillModal.button.filled": "約定済み",
   "trade.fillModal.button.approving": "{symbol} を承認中…",

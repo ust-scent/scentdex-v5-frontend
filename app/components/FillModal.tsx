@@ -524,6 +524,24 @@ export function FillModal({
   const wethShortfall = takerIsWeth ? weth.shortfallFor(fillTaker) : 0n;
   const needsWrap = wethShortfall > 0n;
 
+  // -- Taker balance guard (2026-07-24) -----------------------------------------
+  // A taker whose pay-token balance can't cover this fill must be stopped
+  // HERE, before the approve/permit pipeline ever reaches the wallet —
+  // otherwise they hit an approval popup for a fill that can only revert.
+  // On wrapped-native pairs spendable = WETH + auto-wrappable ETH (the wrap
+  // leg covers the difference); elsewhere it's the plain ERC-20 balance.
+  const takerSpendable = takerIsWeth ? weth.spendable : takerStatus.balance;
+  const takerBalanceLoading = takerIsWeth
+    ? weth.balancesLoading
+    : takerStatus.balanceLoading;
+  const insufficientTakerBalance =
+    Boolean(account) &&
+    onSupportedChain &&
+    !takerBalanceLoading &&
+    fillCalc.fillTaker !== null &&
+    fillCalc.fillTaker > 0n &&
+    takerSpendable < fillCalc.fillTaker;
+
   // -- Action: sign per-fill PermitSingle then fillOrder() ---------------------
   async function onFillClick() {
     if (!account || !dexAddress || !order) return;
@@ -814,6 +832,9 @@ export function FillModal({
     // H-05: invalid / out-of-range / dust fill size blocks Fill (but never
     // the "close & retry" repurposed button in the error phase).
     (fillCalc.fillMaker === null && phase !== "error") ||
+    // Taker balance guard: don't let an underfunded taker reach the wallet
+    // popups. Also hold the button while the balance is still loading.
+    ((takerBalanceLoading || insufficientTakerBalance) && phase !== "error") ||
     // Consent gating: the box must be ticked for every fill. In the
     // "error" phase the button repurposes itself into "close & retry",
     // so we don't block that recovery path on the checkbox.
@@ -991,6 +1012,17 @@ export function FillModal({
           ) : null}
           {!onSupportedChain ? (
             <Note kind="warn">{t("trade.fillModal.switchNetwork")}</Note>
+          ) : null}
+          {insufficientTakerBalance ? (
+            <Note kind="error">
+              {t("trade.fillModal.insufficientTakerBalance")
+                .replace("{symbol}", youPaySym)
+                .replace(
+                  "{balance}",
+                  formatBalance(takerSpendable, quoteDecimals),
+                )
+                .replace("{needed}", youPay)}
+            </Note>
           ) : null}
           {onSupportedChain && previewQuery.isError ? (
             <Note kind="error">{t("trade.fillModal.previewFeeError")}</Note>
