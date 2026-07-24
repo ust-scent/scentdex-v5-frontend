@@ -216,6 +216,7 @@ export type Dictionary = {
   "trade.placeOrder.buy": string;
   "trade.placeOrder.sell": string;
   "trade.placeOrder.balances": string;
+  "trade.placeOrder.nativeEthHint": string;
   "trade.placeOrder.balanceConnect": string;
   "trade.placeOrder.notDeployedHere": string;
   "trade.placeOrder.wrongNetworkBalance": string;
@@ -659,6 +660,7 @@ const en: Dictionary = {
   "trade.placeOrder.buy": "Buy {base}",
   "trade.placeOrder.sell": "Sell {base}",
   "trade.placeOrder.balances": "Wallet Balance",
+  "trade.placeOrder.nativeEthHint": "1:1 with WETH — wrap to trade",
   "trade.placeOrder.balanceConnect": "Connect wallet to see your balance",
   "trade.placeOrder.notDeployedHere": "—",
   "trade.placeOrder.wrongNetworkBalance": "Switch to a supported network to see your balance",
@@ -1141,6 +1143,7 @@ const ja: Dictionary = {
   "trade.placeOrder.buy": "{base} を買う",
   "trade.placeOrder.sell": "{base} を売る",
   "trade.placeOrder.balances": "ウォレット残高",
+  "trade.placeOrder.nativeEthHint": "WETHと1:1（ラップすると取引に使えます）",
   "trade.placeOrder.balanceConnect": "残高を表示するにはウォレットを接続してください",
   "trade.placeOrder.notDeployedHere": "—",
   "trade.placeOrder.wrongNetworkBalance": "残高を表示するには対応ネットワークに切り替えてください",

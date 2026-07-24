@@ -38,6 +38,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { formatUnits, parseUnits, type Hex } from "viem";
 import {
   useAccount,
+  useBalance,
   useChainId,
   usePublicClient,
   useSignTypedData,
@@ -1078,8 +1079,37 @@ function BalanceStrip({
         <div className="grid grid-cols-2 gap-x-6 gap-y-1">
           <BalanceCell token={baseToken} />
           <BalanceCell token={quoteToken} />
+          {(baseToken.wrapsNative || quoteToken.wrapsNative) &&
+          onSupportedChain ? (
+            <NativeBalanceCell />
+          ) : null}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Native ETH balance, shown alongside the WETH cell on wrapped-native pairs.
+ * WETH and ETH are 1:1 equivalents, so a user holding only unwrapped ETH
+ * would otherwise see "WETH 0" and assume they can't trade. Display-only:
+ * order sizing / validation still count WETH exclusively.
+ */
+function NativeBalanceCell() {
+  const t = useTranslator();
+  const { address } = useAccount();
+  const { data, isLoading } = useBalance({ address });
+  return (
+    <div className="flex flex-col gap-0.5 min-w-0">
+      <span className="text-[10px] uppercase tracking-[0.14em] text-fg-faint">
+        ETH
+      </span>
+      <span className="font-mono tnum text-[14px] text-fg truncate">
+        {isLoading || !data ? "…" : formatBalance(data.value, data.decimals)}
+      </span>
+      <span className="text-[10px] text-fg-dim leading-tight">
+        {t("trade.placeOrder.nativeEthHint")}
+      </span>
     </div>
   );
 }
