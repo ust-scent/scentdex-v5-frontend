@@ -1093,10 +1093,11 @@ function BalanceStrip({
  * Native ETH balance, shown alongside the WETH cell on wrapped-native pairs.
  * WETH and ETH are 1:1 equivalents, so a user holding only unwrapped ETH
  * would otherwise see "WETH 0" and assume they can't trade. Display-only:
- * order sizing / validation still count WETH exclusively.
+ * order sizing / validation still count WETH exclusively. Balance figure
+ * only — no wrap-hint copy (Alex 2026-07-24: users don't think in
+ * wrapped/unwrapped terms).
  */
 function NativeBalanceCell() {
-  const t = useTranslator();
   const { address } = useAccount();
   const { data, isLoading } = useBalance({ address });
   return (
@@ -1106,9 +1107,6 @@ function NativeBalanceCell() {
       </span>
       <span className="font-mono tnum text-[14px] text-fg truncate">
         {isLoading || !data ? "…" : formatBalance(data.value, data.decimals)}
-      </span>
-      <span className="text-[10px] text-fg-dim leading-tight">
-        {t("trade.placeOrder.nativeEthHint")}
       </span>
     </div>
   );
