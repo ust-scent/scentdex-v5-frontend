@@ -1016,7 +1016,7 @@ export function FillModal({
           {insufficientTakerBalance ? (
             <Note kind="error">
               {t("trade.fillModal.insufficientTakerBalance")
-                .replace("{symbol}", youPaySym)
+                .replaceAll("{symbol}", youPaySym)
                 .replace(
                   "{balance}",
                   formatBalance(takerSpendable, quoteDecimals),
