@@ -320,6 +320,107 @@ export async function lastTrade(
     : null;
 }
 
+/** One executed fill, as recorded in the append-only `order_events` log. */
+export type TradeRecord = {
+  orderHash: string;
+  /** On-chain tx that carried the OrderFilled log. Null on legacy rows. */
+  txHash: string | null;
+  blockNumber: number | null;
+  /** Unix seconds. Recorded server-side at fill time — not block-estimated. */
+  at: number;
+  makerToken: string;
+  takerToken: string;
+  /** THIS fill's amounts (not the order's cumulative totals). */
+  fillMakerAmount: string;
+  fillTakerAmount: string;
+};
+
+/**
+ * Executed-fill history for a pair, most recent first.
+ *
+ * Reads the `order_events` audit log rather than replaying `OrderFilled` logs
+ * from chain. Three reasons this is the right source for a trade tape:
+ *
+ *  - **Range.** getLogs is chunked at 900 blocks/call, so an on-chain tape
+ *    deep enough to hold 30 fills on a quiet pair costs dozens of RPC round
+ *    trips per refresh. This is one indexed query.
+ *  - **Granularity.** One row per FILL, so a partially-filled order shows up
+ *    as the several trades it actually was — `orders.filled_*_amount` only
+ *    keeps the cumulative total and would collapse them into one.
+ *  - **Tx hash.** `chain_tx_hash` is already recorded, so each trade can link
+ *    straight to the explorer.
+ *
+ * Caveat the caller must handle: this log only sees fills that were reported
+ * back through `POST /api/orders/[hash]/filled` — i.e. fills executed via this
+ * frontend. A fill submitted directly against the contract by an external
+ * client never lands here. Callers should union this with the on-chain event
+ * index (see `useTradeHistory`) so externally-executed trades still appear.
+ *
+ * Rows whose `meta` is missing the per-fill amounts are dropped: without them
+ * there is no way to derive a price, and a trade tape row with a blank price
+ * is worse than an absent one.
+ */
+export async function listTrades(
+  pair: string,
+  chainId: number,
+  limit: number,
+): Promise<TradeRecord[]> {
+  // Clamp server-side so a hand-crafted ?limit=100000 can't turn into an
+  // unbounded scan.
+  const capped = Math.min(Math.max(Math.trunc(limit) || 0, 1), 200);
+  if (!isDbAvailable()) {
+    // Memory backend (local dev): `memEvents` carries neither tx hash nor
+    // per-fill amounts, so there is nothing faithful to return. The on-chain
+    // index is the only tape in local dev.
+    return [];
+  }
+
+  const result = await query<{
+    order_hash: string;
+    chain_tx_hash: string | null;
+    block_number: string | null;
+    at: Date;
+    meta: { fillMakerAmount?: string; fillTakerAmount?: string } | null;
+    maker_token: string;
+    taker_token: string;
+  }>(
+    `SELECT e.order_hash,
+            e.chain_tx_hash,
+            e.block_number,
+            e.at,
+            e.meta,
+            o.maker_token,
+            o.taker_token
+       FROM order_events e
+       JOIN orders o ON o.order_hash = e.order_hash
+      WHERE e.event_type = 'filled'
+        AND o.pair = $1
+        AND o.chain_id = $2
+      ORDER BY e.at DESC, e.id DESC
+      LIMIT $3`,
+    [pair, chainId, capped],
+  );
+
+  const rows = result?.rows ?? [];
+  const trades: TradeRecord[] = [];
+  for (const row of rows) {
+    const fillMakerAmount = row.meta?.fillMakerAmount;
+    const fillTakerAmount = row.meta?.fillTakerAmount;
+    if (!fillMakerAmount || !fillTakerAmount) continue;
+    trades.push({
+      orderHash: row.order_hash,
+      txHash: row.chain_tx_hash,
+      blockNumber: row.block_number === null ? null : Number(row.block_number),
+      at: Math.floor(row.at.getTime() / 1000),
+      makerToken: row.maker_token,
+      takerToken: row.taker_token,
+      fillMakerAmount,
+      fillTakerAmount,
+    });
+  }
+  return trades;
+}
+
 /**
  * Off-chain cancel: marks the order cancelled and records a `cancelled` event.
  * The taker side will see the order disappear on the next /api/orders read.

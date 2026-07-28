@@ -65,9 +65,22 @@ type ParsedFillLog = {
 
 export type Fill = {
   txHash: Hash;
+  /**
+   * The filled order's EIP-712 hash. One tx can settle several orders, so
+   * (txHash, orderHash) — not txHash alone — identifies a fill. Used by
+   * `useTradeHistory` to de-duplicate against the off-chain fill log.
+   */
+  orderHash: Hash;
   blockNumber: bigint;
   /** Approximate seconds since the fill (blockNumber-derived, 12s/block). */
   ageSec: number;
+  /**
+   * Absolute unix seconds, stamped at fetch time (`now - ageSec`). Gives the
+   * trade tape one sort basis it can share with the off-chain fill log, whose
+   * rows carry a real recorded timestamp. Stamped inside the query function on
+   * purpose — reading the clock during render is impure.
+   */
+  atSec: number;
   maker: Address;
   taker: Address;
   makerToken: Address;
@@ -157,6 +170,7 @@ export function useFillEvents(pair: Pair): PairStats {
         latestBlock,
       );
 
+      const nowSec = Math.floor(Date.now() / 1000);
       const fills: Fill[] = [];
       for (const log of logs) {
         const mt = log.args.makerToken.toLowerCase();
@@ -191,8 +205,10 @@ export function useFillEvents(pair: Pair): PairStats {
 
         fills.push({
           txHash: log.transactionHash,
+          orderHash: log.args.orderHash,
           blockNumber: log.blockNumber,
           ageSec,
+          atSec: nowSec - ageSec,
           maker: log.args.maker,
           taker: log.args.taker,
           makerToken: log.args.makerToken,

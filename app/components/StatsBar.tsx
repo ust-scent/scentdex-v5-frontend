@@ -4,7 +4,7 @@ import { useTranslator } from "@/lib/locale-context";
 import { useFillEvents } from "@/lib/hooks/useFillEvents";
 import { usePairConfig } from "@/lib/hooks/usePairConfig";
 import { formatPrice } from "@/lib/format-price";
-import { symbolLabel, type Pair } from "@/lib/tokens";
+import { symbolLabel, tokenLinks, type Pair } from "@/lib/tokens";
 
 /**
  * Pair stats strip — price, 24h change/volume/high/low, and protocol fee.
@@ -21,6 +21,11 @@ export function StatsBar({ pair }: { pair: Pair }) {
   const t = useTranslator();
   const stats = useFillEvents(pair);
   const cfg = usePairConfig(pair);
+
+  // Links published by the BASE token's issuer, not by SCENTDEX. Keyed off the
+  // active pair so a listing's links never show on another listing's tab —
+  // rendering Seven DAO's links above SCENT/JPYC would read as SCENT's own.
+  const links = tokenLinks(pair.base);
 
   const hasPrice = stats.latestPrice !== undefined;
   const priceText = hasPrice ? formatPrice(stats.latestPrice) : "—";
@@ -93,8 +98,115 @@ export function StatsBar({ pair }: { pair: Pair }) {
             </div>
           }
         />
+        {links ? (
+          // ml-auto parks this at the right edge of the strip. On a narrow
+          // viewport the row wraps and the block simply drops to its own line.
+          <div className="ml-auto">
+            <Field
+              label={t("trade.statsBar.issuerLinks").replace(
+                "{symbol}",
+                symbolLabel(pair.base),
+              )}
+              value={
+                <div className="flex items-center gap-2">
+                  {links.website ? (
+                    <LinkPill
+                      href={links.website}
+                      label={t("trade.statsBar.website")}
+                      icon={<GlobeIcon />}
+                    />
+                  ) : null}
+                  {links.x ? (
+                    // Icon-only: the X mark IS the wordmark, so pairing it
+                    // with an "X" label just renders "X X". The accessible
+                    // name still comes from LinkPill's aria-label.
+                    <LinkPill
+                      href={links.x}
+                      label="X"
+                      icon={<XIcon />}
+                      iconOnly
+                    />
+                  ) : null}
+                </div>
+              }
+            />
+          </div>
+        ) : null}
       </div>
     </div>
+  );
+}
+
+function LinkPill({
+  href,
+  label,
+  icon,
+  iconOnly,
+}: {
+  href: string;
+  label: string;
+  icon: React.ReactNode;
+  /** Render the glyph alone; `label` still supplies the accessible name. */
+  iconOnly?: boolean;
+}) {
+  let host: string;
+  try {
+    host = new URL(href).host;
+  } catch {
+    host = href;
+  }
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      // The destination is a third party's site, so name it in the accessible
+      // label instead of leaving a bare "Website".
+      aria-label={`${label} — ${host}`}
+      title={host}
+      className={`inline-flex items-center gap-1.5 rounded-md border border-line py-1 text-[12px] text-fg-dim hover:text-fg hover:border-fg-faint transition-colors ${
+        iconOnly ? "px-2" : "px-2.5"
+      }`}
+    >
+      {icon}
+      {iconOnly ? null : <span>{label}</span>}
+    </a>
+  );
+}
+
+function GlobeIcon() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className="shrink-0"
+    >
+      <circle cx="12" cy="12" r="10" />
+      <path d="M2 12h20" />
+      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+    </svg>
+  );
+}
+
+function XIcon() {
+  return (
+    <svg
+      width="11"
+      height="11"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+      className="shrink-0"
+    >
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+    </svg>
   );
 }
 

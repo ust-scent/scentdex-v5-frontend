@@ -24,6 +24,22 @@ export type Token = {
    * regression).
    */
   displaySymbol?: string;
+  /**
+   * Official links published by the token's ISSUER — not by SCENTDEX. Rendered
+   * in the StatsBar for the ACTIVE PAIR'S BASE TOKEN only, so a listing's links
+   * can never bleed onto another listing's tab (e.g. Seven DAO's links must not
+   * appear while the user is looking at SCENT/JPYC). Undefined for tokens whose
+   * issuer has published nothing — the UI then renders no link element at all.
+   */
+  links?: TokenLinks;
+};
+
+/** Issuer-published destinations for a listed token. All optional. */
+export type TokenLinks = {
+  /** Issuer's own website. */
+  website?: string;
+  /** Issuer's X (Twitter) profile. */
+  x?: string;
 };
 
 /**
@@ -98,6 +114,13 @@ export const TOKENS: Token[] = [
       11155111: undefined,
     },
     accentClass: "bg-sky-500",
+    // Issuer-published destinations (Alex 2026-07-29). Scoped to this token
+    // entry on purpose: StatsBar renders links for the active pair's BASE
+    // token, so these surface on SDT/WETH and nowhere else.
+    links: {
+      website: "https://sevendaotoken.com/",
+      x: "https://x.com/sevendaotoken",
+    },
   },
   {
     symbol: "WETH",
@@ -133,6 +156,12 @@ export const TOKENS: Token[] = [
     // "SDT-TEST"). Keeps the test build's UI identical to mainnet so no
     // source edit is needed at cutover.
     displaySymbol: "SDT",
+    // Mirrors the mainnet SDT entry for the same reason as displaySymbol:
+    // /sdttest must render exactly what mainnet renders.
+    links: {
+      website: "https://sevendaotoken.com/",
+      x: "https://x.com/sevendaotoken",
+    },
   },
   {
     symbol: "WETH-TEST",
@@ -165,6 +194,20 @@ export const TOKENS: Token[] = [
  */
 export function symbolLabel(symbol: Token["symbol"] | string): string {
   return TOKENS.find((t) => t.symbol === symbol)?.displaySymbol ?? symbol;
+}
+
+/**
+ * Issuer links for a token symbol, or undefined when the issuer has published
+ * none. Callers must render nothing (not an empty container) on undefined —
+ * an empty links row on a pair whose issuer published nothing reads as
+ * "SCENTDEX has no links", which is a different and wrong claim.
+ */
+export function tokenLinks(
+  symbol: Token["symbol"] | string,
+): TokenLinks | undefined {
+  const links = TOKENS.find((t) => t.symbol === symbol)?.links;
+  if (!links) return undefined;
+  return links.website || links.x ? links : undefined;
 }
 
 export type Pair = {

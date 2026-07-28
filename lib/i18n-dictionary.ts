@@ -244,6 +244,8 @@ export type Dictionary = {
   "trade.recentTrades.syncing": string;
   "trade.recentTrades.loading": string;
   "trade.recentTrades.empty": string;
+  /** `{explorer}` is substituted with the chain's explorer name. */
+  "trade.recentTrades.viewTx": string;
 
   // Trade page — StandingAllowanceBanner (round-2 → round-3 cleanup)
   "trade.standingAllowance.headline": string;
@@ -288,6 +290,9 @@ export type Dictionary = {
   "trade.statsBar.makerFee": string;
   "trade.statsBar.makerFeeSuffix": string;
   "trade.statsBar.lastPrice": string;
+  /** `{symbol}` is substituted with the base token's display symbol. */
+  "trade.statsBar.issuerLinks": string;
+  "trade.statsBar.website": string;
 
   // Trade page — order book crossed-state copy
   "trade.orderbook.crossedWarning": string;
@@ -690,7 +695,8 @@ const en: Dictionary = {
   "trade.recentTrades.live": "live",
   "trade.recentTrades.syncing": "syncing",
   "trade.recentTrades.loading": "Loading recent fills…",
-  "trade.recentTrades.empty": "No fills in the last 24 hours.",
+  "trade.recentTrades.empty": "This pair has not traded yet.",
+  "trade.recentTrades.viewTx": "View this trade on {explorer}",
 
   // Trade page — StandingAllowanceBanner
   "trade.standingAllowance.headline":
@@ -743,6 +749,8 @@ const en: Dictionary = {
   "trade.statsBar.makerFee": "Maker Fee",
   "trade.statsBar.makerFeeSuffix": "deducted from receive on sell",
   "trade.statsBar.lastPrice": "Last trade",
+  "trade.statsBar.issuerLinks": "{symbol} official",
+  "trade.statsBar.website": "Website",
   "trade.orderbook.crossedWarning":
     "Orderbook crossed — arbitrage opportunity available",
   "trade.orderbook.crossed": "crossed",
@@ -1174,7 +1182,8 @@ const ja: Dictionary = {
   "trade.recentTrades.live": "ライブ",
   "trade.recentTrades.syncing": "同期中",
   "trade.recentTrades.loading": "最近の約定を読み込み中…",
-  "trade.recentTrades.empty": "過去 24 時間に約定はありません。",
+  "trade.recentTrades.empty": "このペアはまだ約定していません。",
+  "trade.recentTrades.viewTx": "{explorer} でこの取引を表示",
 
   // Trade page — StandingAllowanceBanner
   "trade.standingAllowance.headline":
@@ -1227,6 +1236,8 @@ const ja: Dictionary = {
   "trade.statsBar.makerFee": "メイカー手数料",
   "trade.statsBar.makerFeeSuffix": "売り注文時、受取通貨から差引",
   "trade.statsBar.lastPrice": "最終約定",
+  "trade.statsBar.issuerLinks": "{symbol} 公式",
+  "trade.statsBar.website": "公式サイト",
   "trade.orderbook.crossedWarning":
     "板が交差しています — アービトラージ機会あり",
   "trade.orderbook.crossed": "交差中",
