@@ -236,7 +236,12 @@ export function useFillEvents(pair: Pair): PairStats {
   // price sticks at the last trade instead of blanking to "—" on a quiet
   // pair. 24h stats (change / volume / high / low) stay window-scoped.
   const pairKey = `${pair.base}/${pair.quote}`;
-  const { data: lastTradePrice } = useQuery<number | undefined>({
+  // `null`, never `undefined`, for "no price available": react-query rejects
+  // an undefined resolution outright ("Query data cannot be undefined") and
+  // logged an error on every poll of a pair that has never traded — which is
+  // the normal state of a freshly listed pair, not a fault. The consumer below
+  // maps null back to undefined for `PairStats.latestPrice`.
+  const { data: lastTradePrice } = useQuery<number | null>({
     queryKey: ["scentdex.lastPrice", chainId, pairKey],
     enabled: Boolean(baseToken && quoteToken && baseAddr && quoteAddr),
     refetchInterval: 30_000,
@@ -244,7 +249,7 @@ export function useFillEvents(pair: Pair): PairStats {
       const res = await fetch(
         `/api/last-price?pair=${encodeURIComponent(pairKey)}&chainId=${chainId}`,
       );
-      if (!res.ok) return undefined;
+      if (!res.ok) return null;
       const { trade } = (await res.json()) as {
         trade: {
           makerToken: string;
@@ -254,24 +259,24 @@ export function useFillEvents(pair: Pair): PairStats {
         } | null;
       };
       if (!trade || !baseToken || !quoteToken || !baseAddr || !quoteAddr) {
-        return undefined;
+        return null;
       }
       const mt = trade.makerToken.toLowerCase();
       const tt = trade.takerToken.toLowerCase();
       const makerAmount = BigInt(trade.makerAmount);
       const takerAmount = BigInt(trade.takerAmount);
-      if (makerAmount === 0n || takerAmount === 0n) return undefined;
+      if (makerAmount === 0n || takerAmount === 0n) return null;
       if (mt === baseAddr && tt === quoteAddr) {
         const base = Number(formatUnits(makerAmount, baseToken.decimals));
         const quote = Number(formatUnits(takerAmount, quoteToken.decimals));
-        return base > 0 ? quote / base : undefined;
+        return base > 0 ? quote / base : null;
       }
       if (mt === quoteAddr && tt === baseAddr) {
         const base = Number(formatUnits(takerAmount, baseToken.decimals));
         const quote = Number(formatUnits(makerAmount, quoteToken.decimals));
-        return base > 0 ? quote / base : undefined;
+        return base > 0 ? quote / base : null;
       }
-      return undefined;
+      return null;
     },
   });
 
@@ -282,8 +287,10 @@ export function useFillEvents(pair: Pair): PairStats {
         fills: [],
         loading: isLoading,
         error,
-        // Persist the last traded price even outside the 24h window.
-        latestPrice: lastTradePrice,
+        // Persist the last traded price even outside the 24h window. `??`
+        // collapses both "not fetched yet" (undefined) and "no trade on
+        // record" (null) to the absent value PairStats expects.
+        latestPrice: lastTradePrice ?? undefined,
         priceChange24h: undefined,
         volume24h: 0,
         high24h: undefined,
