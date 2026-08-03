@@ -7,7 +7,13 @@ import {
   useMakerStats,
 } from "@/lib/hooks/useMakerStats";
 import { formatPrice } from "@/lib/format-price";
-import { TOKENS, symbolLabel, type Pair } from "@/lib/tokens";
+import { formatTokenTotal } from "@/lib/format-amount";
+import {
+  TOKENS,
+  displayDecimalsFor,
+  symbolLabel,
+  type Pair,
+} from "@/lib/tokens";
 import { useEffect, useMemo, useState } from "react";
 import { formatUnits, type Address, type Hex } from "viem";
 import { useAccount, useChainId } from "wagmi";
@@ -131,10 +137,25 @@ export function OrderBook({ pair }: { pair: Pair }) {
     0,
   );
 
-  const { asks, bids, midPrice, spread, spreadBps, crossed } = useMemo(
+  const {
+    asks,
+    bids,
+    midPrice,
+    spread,
+    spreadBps,
+    crossed,
+    askQuoteTotal,
+    bidQuoteTotal,
+  } = useMemo(
     () => deriveBook(fillableOrders, pair, chainId),
     [fillableOrders, pair, chainId],
   );
+
+  // Quote token drives both the unit label and the display precision, so a
+  // pair added to PAIRS later gets correct depth totals with no edit here.
+  const quoteToken = TOKENS.find((tok) => tok.symbol === pair.quote);
+  const quoteDecimals = quoteToken?.decimals ?? 18;
+  const quoteFractionDigits = displayDecimalsFor(pair.quote);
 
   // Pull reputation for every visible maker so we can warn buyers about
   // frequent cancellers before they spend gas.
@@ -182,6 +203,16 @@ export function OrderBook({ pair }: { pair: Pair }) {
           </div>
         ) : (
           <div className="font-mono text-[13px] leading-tight">
+            {!empty ? (
+              <DepthTotal
+                side="sell"
+                units={askQuoteTotal}
+                tokenDecimals={quoteDecimals}
+                fractionDigits={quoteFractionDigits}
+                quoteLabel={symbolLabel(pair.quote)}
+              />
+            ) : null}
+
             {asks.map((r) => (
               <BookRow
                 key={`ask-${r.apiOrder.orderHash}`}
@@ -232,6 +263,16 @@ export function OrderBook({ pair }: { pair: Pair }) {
                 onClick={() => setSelected(r.apiOrder)}
               />
             ))}
+
+            {!empty ? (
+              <DepthTotal
+                side="buy"
+                units={bidQuoteTotal}
+                tokenDecimals={quoteDecimals}
+                fractionDigits={quoteFractionDigits}
+                quoteLabel={symbolLabel(pair.quote)}
+              />
+            ) : null}
           </div>
         )}
 
@@ -263,6 +304,57 @@ export function OrderBook({ pair }: { pair: Pair }) {
         }}
       />
     </>
+  );
+}
+
+/**
+ * Total quote-token value resting on one side of the book.
+ *
+ * Placed at the OUTER edge of the side it sums (sell total above the asks
+ * block, buy total below the bids block) rather than together in the middle:
+ * each figure then caps its own block, and side colour + label + adjacency
+ * all agree on which side it belongs to. Stacking both at the spread would
+ * put two numbers on the one row where the reader is already parsing mid and
+ * spread, and where "above the line" vs "below the line" is the only cue.
+ *
+ * Both totals render whenever the board is non-empty, including a side that
+ * happens to be flat. A one-sided book showing "0" is real information about
+ * depth — suppressing the row instead would move the surviving figure and
+ * make the two states look like different layouts.
+ */
+function DepthTotal({
+  side,
+  units,
+  tokenDecimals,
+  fractionDigits,
+  quoteLabel,
+}: {
+  side: "buy" | "sell";
+  units: bigint;
+  tokenDecimals: number;
+  fractionDigits: number;
+  quoteLabel: string;
+}) {
+  const t = useTranslator();
+  const colour = side === "buy" ? "text-buy" : "text-sell";
+
+  return (
+    <div
+      className={`flex items-center justify-between px-4 py-2 bg-white/[0.015] ${
+        side === "sell" ? "border-b border-line" : "border-t border-line"
+      }`}
+      title={t("trade.orderBook.depthTooltip")}
+    >
+      <span className="text-[10px] uppercase tracking-[0.14em] text-fg-faint">
+        {side === "buy"
+          ? t("trade.orderBook.bidDepth")
+          : t("trade.orderBook.askDepth")}
+      </span>
+      <span className={`tnum ${colour}`}>
+        {formatTokenTotal(units, tokenDecimals, fractionDigits)}{" "}
+        <span className="text-fg-faint">{quoteLabel}</span>
+      </span>
+    </div>
   );
 }
 
@@ -357,6 +449,8 @@ function deriveBook(orders: ApiOrder[], pair: Pair, chainId: number) {
       spread: null,
       spreadBps: null,
       crossed: false,
+      askQuoteTotal: 0n,
+      bidQuoteTotal: 0n,
     };
   }
 
@@ -365,6 +459,15 @@ function deriveBook(orders: ApiOrder[], pair: Pair, chainId: number) {
 
   const asks: Row[] = [];
   const bids: Row[] = [];
+
+  // Depth totals: how much quote-token value is actually resting on each
+  // side right now. Accumulated in the token's smallest unit as bigint —
+  // never via the per-row `price`/`amount` floats above, which are display
+  // values carrying a division each. Summing those would let the headline
+  // number drift from the orders it claims to total, and this figure exists
+  // precisely so a taker can trust the board's depth at a glance.
+  let askQuoteTotal = 0n;
+  let bidQuoteTotal = 0n;
 
   for (const o of orders) {
     if (o.status !== "open" && o.status !== "partially-filled") continue;
@@ -411,6 +514,20 @@ function deriveBook(orders: ApiOrder[], pair: Pair, chainId: number) {
       const remainingBase = (takerAmount * remainingMaker) / makerAmount;
       amount = Number(formatUnits(remainingBase, baseDecimals));
     }
+
+    // Quote-token value still resting in THIS order, in smallest units.
+    //  - bid: the maker is selling quote, so the unfilled maker amount
+    //    already IS the quote value — exact, no arithmetic at all.
+    //  - ask: the maker is selling base, so the quote it would draw is
+    //    takerAmount pro-rated by the base still unsold. Integer division
+    //    floors, understating by at most 1 unit (1 wei) per order, which
+    //    keeps the total from ever overstating available depth.
+    const remainingQuote = isSell
+      ? (takerAmount * remainingMaker) / makerAmount
+      : remainingMaker;
+
+    if (isSell) askQuoteTotal += remainingQuote;
+    else bidQuoteTotal += remainingQuote;
 
     const row: Row = {
       price,
@@ -472,5 +589,14 @@ function deriveBook(orders: ApiOrder[], pair: Pair, chainId: number) {
   const spreadBps =
     spread !== null && midPrice ? (spread / midPrice) * 100 : null;
 
-  return { asks, bids, midPrice, spread, spreadBps, crossed };
+  return {
+    asks,
+    bids,
+    midPrice,
+    spread,
+    spreadBps,
+    crossed,
+    askQuoteTotal,
+    bidQuoteTotal,
+  };
 }

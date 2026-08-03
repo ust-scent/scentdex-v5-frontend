@@ -182,6 +182,9 @@ export type Dictionary = {
   "trade.orderBook.statusAggregated": string;
   "trade.orderBook.cancellerWarnPct": string;
   "trade.orderBook.cancellerWarnOften": string;
+  "trade.orderBook.askDepth": string;
+  "trade.orderBook.bidDepth": string;
+  "trade.orderBook.depthTooltip": string;
 
   // Trade page — PlaceOrder
   "trade.placeOrder.title": string;
@@ -630,6 +633,10 @@ const en: Dictionary = {
     "This maker has cancelled {pct}% of their orders — fills here are more likely to revert.",
   "trade.orderBook.cancellerWarnOften":
     "This maker cancels frequently — fills here are more likely to revert.",
+  "trade.orderBook.askDepth": "Sell side total",
+  "trade.orderBook.bidDepth": "Buy side total",
+  "trade.orderBook.depthTooltip":
+    "Total value of every order currently resting on this side of the book.",
 
   // Trade page — PlaceOrder
   "trade.placeOrder.title": "Place Order",
@@ -1119,6 +1126,10 @@ const ja: Dictionary = {
     "このメイカーは注文の {pct}% をキャンセルしています。ここでの約定は失敗しやすい傾向があります。",
   "trade.orderBook.cancellerWarnOften":
     "このメイカーは頻繁にキャンセルしています。ここでの約定は失敗しやすい傾向があります。",
+  "trade.orderBook.askDepth": "売り板の合計",
+  "trade.orderBook.bidDepth": "買い板の合計",
+  "trade.orderBook.depthTooltip":
+    "この板に現在出ている注文の合計金額です。",
 
   // Trade page — PlaceOrder
   "trade.placeOrder.title": "注文を出す",

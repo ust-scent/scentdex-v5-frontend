@@ -32,7 +32,35 @@ export type Token = {
    * issuer has published nothing — the UI then renders no link element at all.
    */
   links?: TokenLinks;
+  /**
+   * Fixed decimal places used when rendering a MONEY TOTAL denominated in
+   * this token (the order-book depth sums). Deliberately separate from
+   * `decimals`, which is the on-chain unit scale and says nothing about how
+   * the unit is quoted: JPYC is an 18-decimal ERC-20 but a yen-pegged unit
+   * nobody prices in fractions, so its totals read best at 0 dp, while WETH
+   * totals need 4 to stay meaningful at all.
+   *
+   * Unset → `DEFAULT_DISPLAY_DECIMALS`, so a newly listed token renders
+   * sensibly with no code change and only genuinely unusual units need a
+   * line here.
+   */
+  displayDecimals?: number;
 };
+
+/**
+ * Display precision for a money total in a token with no explicit
+ * `displayDecimals`. 2 dp suits the stablecoin-style units that dominate the
+ * quote side (USDT, SCENT).
+ */
+export const DEFAULT_DISPLAY_DECIMALS = 2;
+
+/** Fixed decimal places for rendering a total denominated in `symbol`. */
+export function displayDecimalsFor(symbol: Token["symbol"] | string): number {
+  return (
+    TOKENS.find((t) => t.symbol === symbol)?.displayDecimals ??
+    DEFAULT_DISPLAY_DECIMALS
+  );
+}
 
 /** Issuer-published destinations for a listed token. All optional. */
 export type TokenLinks = {
@@ -79,6 +107,10 @@ export const TOKENS: Token[] = [
       11155111: "0x0174899c27d8315294f230aC7f72913718065CC2",
     },
     accentClass: "bg-blue-500",
+    // Yen-pegged: totals are read as yen, and yen has no working subunit.
+    // "12,345,678 JPYC" is the number a JP user expects; "12,345,678.00"
+    // just adds noise to the widest total on the board.
+    displayDecimals: 0,
   },
   {
     symbol: "USDT",
@@ -134,6 +166,10 @@ export const TOKENS: Token[] = [
     },
     accentClass: "bg-indigo-400",
     wrapsNative: true,
+    // ETH-denominated depth is small in absolute terms — 2 dp would collapse
+    // a genuine 0.0431 ETH of resting bids to "0.04" and a thin book to
+    // "0.00", which reads as an empty board rather than a thin one.
+    displayDecimals: 4,
   },
   // ---- SDT/WETH test market (Sepolia only, /sdttest route) -------------
   // Both tokens deliberately have NO mainnet address: pairsForChain(1) can
@@ -179,6 +215,9 @@ export const TOKENS: Token[] = [
     },
     accentClass: "bg-indigo-400",
     wrapsNative: true,
+    // Mirrors the mainnet WETH entry: /sdttest must render exactly what
+    // mainnet renders, depth totals included.
+    displayDecimals: 4,
     // Surfaced in the UI as the production label "WETH（ETH）" so first-time
     // users understand it is the same asset as ETH (auto-wrapped) and the
     // test build matches mainnet with no post-test source edit. Internal
