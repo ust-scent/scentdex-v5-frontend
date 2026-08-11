@@ -9,6 +9,13 @@ import { TOKENS, type Pair } from "@/lib/tokens";
  */
 export type BookApiOrder = {
   status: "open" | "partially-filled" | "filled" | "cancelled" | "expired";
+  /**
+   * EIP-712 order hash, present on the raw /api/orders payload. Optional
+   * here so hand-built fixtures stay valid; only needed by callers that
+   * exclude a specific order from the derived top (FillModal's deviation
+   * reference must not be defined by the very order being filled).
+   */
+  orderHash?: string;
   order: {
     maker: Address;
     makerToken: Address;
@@ -41,6 +48,7 @@ export function deriveBestPrices(
   pair: Pair,
   chainId: number,
   excludeMaker?: string,
+  excludeOrderHash?: string,
 ): { bestAsk: number | null; bestBid: number | null } {
   const baseToken = TOKENS.find((t) => t.symbol === pair.base);
   const quoteToken = TOKENS.find((t) => t.symbol === pair.quote);
@@ -53,10 +61,15 @@ export function deriveBestPrices(
   let bestBid: number | null = null;
 
   const excluded = excludeMaker?.toLowerCase();
+  const excludedHash = excludeOrderHash?.toLowerCase();
 
   for (const o of orders) {
     if (o.status !== "open" && o.status !== "partially-filled") continue;
     if (excluded && o.order.maker.toLowerCase() === excluded) continue;
+    // Fat-finger guard: the order a taker is about to fill must not anchor
+    // its own deviation check — on an otherwise-empty book a mispriced ask
+    // would become the "reference" and read as 0% deviation.
+    if (excludedHash && o.orderHash?.toLowerCase() === excludedHash) continue;
     const mt = o.order.makerToken.toLowerCase();
     const tt = o.order.takerToken.toLowerCase();
 

@@ -13,7 +13,18 @@ import type { Pair } from "@/lib/tokens";
  * shared store, so the form gets its own lightweight poll rather than a
  * page-level state lift that would touch every pair's layout.
  */
-export function useBestPrices(pair: Pair): {
+export function useBestPrices(
+  pair: Pair,
+  opts?: {
+    /**
+     * false pauses the poll entirely (used by the always-mounted FillModal
+     * so a closed modal doesn't burn a 3s fetch loop). Defaults to true.
+     */
+    enabled?: boolean;
+    /** Order hash to exclude from the derived top (see deriveBestPrices). */
+    excludeOrderHash?: string;
+  },
+): {
   bestAsk: number | null;
   bestBid: number | null;
 } {
@@ -24,8 +35,10 @@ export function useBestPrices(pair: Pair): {
   const [orders, setOrders] = useState<BookApiOrder[]>([]);
 
   const pairKey = `${pair.base}/${pair.quote}`;
+  const enabled = opts?.enabled ?? true;
 
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -51,7 +64,13 @@ export function useBestPrices(pair: Pair): {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [pairKey]);
+  }, [pairKey, enabled]);
 
-  return deriveBestPrices(orders, pair, chainId, account);
+  return deriveBestPrices(
+    orders,
+    pair,
+    chainId,
+    account,
+    opts?.excludeOrderHash,
+  );
 }

@@ -32,6 +32,7 @@ import {
 import { usePathname } from "next/navigation";
 import { useFillEvents } from "@/lib/hooks/useFillEvents";
 import { formatPrice } from "@/lib/format-price";
+import { deviationWarning, referencePrice } from "@/lib/price-deviation";
 import { useWeth } from "@/lib/hooks/useWeth";
 import { TOKENS, feeConfig, symbolLabel, type Pair, type Token } from "@/lib/tokens";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -237,24 +238,33 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
   }
   const canSign = reasons.length === 0;
 
-  // Non-blocking warning: the entered unit price is wildly off the last
-  // traded price (fat-finger / crossed book). Does NOT disable signing — the
-  // maker may legitimately post far from market — but flags it so a mis-typed
-  // 1e24 price isn't submitted silently (tester E-07 / E-10).
-  const priceFarFromMarket = (() => {
+  const book = useBestPrices(pair);
+
+  // Fat-finger guard (2026-08-11): warn when the entered unit price is ≥30%
+  // away from the market reference (last trade → book mid → single resting
+  // side; see lib/price-deviation.ts). Replaces the earlier 20x/0.05x
+  // last-trade heuristic (E-07/E-10) with a much tighter 30% band. The
+  // inline banner never disables signing — the maker may legitimately post
+  // far from market — but the sign modal turns the same condition into a
+  // failing check, so pushing a wild price through requires the explicit
+  // hold-to-sign override.
+  const priceRef = referencePrice(
+    stats.latestPrice,
+    book.bestBid,
+    book.bestAsk,
+  );
+  const priceDeviation = (() => {
     const p = Number(unitPrice.replace(/[,\s]/g, ""));
-    const last = stats.latestPrice;
-    if (!last || last <= 0 || !Number.isFinite(p) || p <= 0) return false;
-    return p > last * 20 || p < last / 20;
+    if (!priceRef || !Number.isFinite(p) || p <= 0) return null;
+    return deviationWarning(p, priceRef.price);
   })();
 
   // Non-blocking warning (E-10 strict): the entered price crosses the live
   // book — a buy at/above the best ask, or a sell at/below the best bid.
-  // Complements the last-trade deviation heuristic above with the actual
-  // resting orders, so a maker who is about to be instantly filled at their
-  // own price sees it BEFORE signing. Never disables signing: crossing on
-  // purpose is a legitimate way to take liquidity on a signed-order DEX.
-  const book = useBestPrices(pair);
+  // Complements the deviation band above with the actual resting orders, so
+  // a maker who is about to be instantly filled at their own price sees it
+  // BEFORE signing. Never disables signing: crossing on purpose is a
+  // legitimate way to take liquidity on a signed-order DEX.
   const crossesBook = (() => {
     const p = Number(unitPrice.replace(/[,\s]/g, ""));
     if (!Number.isFinite(p) || p <= 0) return null;
@@ -548,6 +558,14 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
           // Phase 3.4: read these from the contract.
           minTakerAmount: undefined,
           maxPriceRatio: undefined,
+          // Fat-finger guard: undefined = no market reference existed (the
+          // modal omits the check row); null = checked and within ±30%;
+          // object = ≥30% off, the check fails → hold-to-sign override.
+          priceDeviation: priceRef
+            ? priceDeviation
+              ? { ...priceDeviation, refPrice: priceRef.price }
+              : null
+            : undefined,
         }
       : null;
 
@@ -625,9 +643,15 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
           marketPriceHint={stats.latestPrice}
         />
 
-        {priceFarFromMarket ? (
+        {priceDeviation && priceRef ? (
           <div className="mt-1 px-3 py-2 rounded-md border border-amber-500/40 bg-amber-500/[0.06] text-[11px] text-amber-300 leading-relaxed">
-            {t("trade.placeOrder.priceFarFromMarket")}
+            {t(
+              priceDeviation.above
+                ? "trade.placeOrder.priceDeviationAbove"
+                : "trade.placeOrder.priceDeviationBelow",
+            )
+              .replace("{pct}", String(priceDeviation.pct))
+              .replace("{ref}", formatPrice(priceRef.price))}
           </div>
         ) : null}
 

@@ -115,7 +115,17 @@ const ORDER_FILLED_EVENT = SCENTDEX_V5_ABI.find(
   (entry) => entry.type === "event" && entry.name === "OrderFilled",
 ) as Extract<(typeof SCENTDEX_V5_ABI)[number], { type: "event" }>;
 
-export function useFillEvents(pair: Pair): PairStats {
+export function useFillEvents(
+  pair: Pair,
+  opts?: {
+    /**
+     * false pauses the query (no getLogs traffic). Used by the
+     * always-mounted FillModal, which only needs fill stats while open.
+     * Defaults to true; existing callers are unaffected.
+     */
+    enabled?: boolean;
+  },
+): PairStats {
   const chainId = useChainId();
   const dexAddress = SCENTDEX_V5_ADDRESS[chainId];
   const publicClient = usePublicClient({ chainId });
@@ -138,15 +148,17 @@ export function useFillEvents(pair: Pair): PairStats {
 
   const { data, isLoading, error } = useQuery<Fill[]>({
     queryKey,
-    enabled: Boolean(
-      dexAddress &&
-        publicClient &&
-        latestBlock &&
-        baseToken &&
-        quoteToken &&
-        baseAddr &&
-        quoteAddr,
-    ),
+    enabled:
+      (opts?.enabled ?? true) &&
+      Boolean(
+        dexAddress &&
+          publicClient &&
+          latestBlock &&
+          baseToken &&
+          quoteToken &&
+          baseAddr &&
+          quoteAddr,
+      ),
     refetchInterval: 15_000,
     refetchOnWindowFocus: true,
     queryFn: async () => {

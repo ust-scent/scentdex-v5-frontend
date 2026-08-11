@@ -17,10 +17,14 @@ import { TermsConsentCheckbox } from "@/app/components/TermsConsentCheckbox";
 import { PERMIT2_ABI } from "@/lib/abi";
 import { PERMIT2_ADDRESS, SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
 import { useTranslator } from "@/lib/locale-context";
+import { useBestPrices } from "@/lib/hooks/useBestPrices";
+import { useFillEvents } from "@/lib/hooks/useFillEvents";
 import { useIsWrongNetwork } from "@/lib/hooks/useNetworkGuard";
 import { useTokenStatus } from "@/lib/hooks/useTokenStatus";
 import { useWeth } from "@/lib/hooks/useWeth";
 import { fetchRevertError, parseFillError } from "@/lib/parse-fill-error";
+import { formatPrice } from "@/lib/format-price";
+import { deviationWarning, referencePrice } from "@/lib/price-deviation";
 import {
   buildPermit2Domain,
   EMPTY_PERMIT_SIGNATURE,
@@ -31,7 +35,7 @@ import {
   type PermitSingle,
   type SerialisedPermitSingle,
 } from "@/lib/permit2";
-import { TOKENS, symbolLabel, type Token } from "@/lib/tokens";
+import { PAIRS, TOKENS, symbolLabel, type Token } from "@/lib/tokens";
 
 /** ms before "Confirming on chain…" gets a "tx is taking too long" warning. */
 const CONFIRM_TIMEOUT_MS = 90_000;
@@ -193,6 +197,29 @@ export function FillModal({
   const weth = useWeth();
   const isWrongNetwork = useIsWrongNetwork();
 
+  // Fat-finger guard (2026-08-11): market reference for the pair being
+  // filled, so a taker about to settle ≥30% off market sees a warning and
+  // must explicitly acknowledge it. Both hooks are gated on `open` — the
+  // modal stays mounted while closed and must not poll in that state. The
+  // PAIRS[0] fallback is inert (enabled=false whenever pairObj is missing).
+  const pairObj = useMemo(
+    () =>
+      order
+        ? PAIRS.find((p) => `${p.base}/${p.quote}` === order.pair)
+        : undefined,
+    [order],
+  );
+  const deviationStats = useFillEvents(pairObj ?? PAIRS[0], {
+    enabled: open && Boolean(pairObj),
+  });
+  // excludeOrderHash: the order being filled must not anchor its own
+  // deviation reference — see deriveBestPrices.
+  const deviationBook = useBestPrices(pairObj ?? PAIRS[0], {
+    enabled: open && Boolean(pairObj),
+    excludeOrderHash: order?.orderHash,
+  });
+  const [deviationAck, setDeviationAck] = useState(false);
+
   const t = useTranslator();
   const { signTypedDataAsync, isPending: signing } = useSignTypedData();
   const writeTx = useWriteContract();
@@ -262,6 +289,7 @@ export function FillModal({
     if (!open) return;
     setPhase("idle");
     setError(null);
+    setDeviationAck(false);
     // Prefill the fill-amount input with the exact remaining makerToken
     // amount (formatUnits round-trips losslessly through parseUnits), so
     // the default action stays "fill everything".
@@ -502,6 +530,32 @@ export function FillModal({
   const priceNumber =
     Number(formatUnits(takerAmount, quoteDecimals)) /
     Math.max(Number(formatUnits(makerAmount, baseDecimals)), 1e-18);
+
+  // Fat-finger guard: warn when this order's price is ≥30% off the market
+  // reference (last trade → book mid → single resting side, this order
+  // itself excluded). priceNumber is quote-per-base only when the maker is
+  // the base-seller; for a maker BUY order the taker delivers base, and
+  // takerAmount/makerAmount is base-per-quote — invert so the deviation
+  // compares like with like.
+  const makerSellsBase =
+    pairObj !== undefined &&
+    makerTokenMeta !== undefined &&
+    makerTokenMeta.symbol === pairObj.base;
+  const orderUnitPrice = makerSellsBase
+    ? priceNumber
+    : priceNumber > 0
+    ? 1 / priceNumber
+    : 0;
+  const deviationRef = pairObj
+    ? referencePrice(
+        deviationStats.latestPrice,
+        deviationBook.bestBid,
+        deviationBook.bestAsk,
+      )
+    : null;
+  const priceDeviation = deviationRef
+    ? deviationWarning(orderUnitPrice, deviationRef.price)
+    : null;
 
   const notSelf =
     account && order.order.maker.toLowerCase() !== account.toLowerCase();
@@ -839,6 +893,9 @@ export function FillModal({
     // "error" phase the button repurposes itself into "close & retry",
     // so we don't block that recovery path on the checkbox.
     (!termsAgreed && phase !== "error") ||
+    // Fat-finger guard: a ≥30% off-market fill needs its own explicit
+    // acknowledgment (same error-phase escape hatch as the terms box).
+    (priceDeviation !== null && !deviationAck && phase !== "error") ||
     phase === "wrapping-eth" ||
     phase === "awaiting-permit-sig" ||
     phase === "submitting-tx" ||
@@ -854,6 +911,7 @@ export function FillModal({
   // unticked again.
   function handleClose() {
     setTermsAgreed(false);
+    setDeviationAck(false);
     onClose();
   }
 
@@ -895,6 +953,34 @@ export function FillModal({
               </span>
             }
           />
+
+          {/* Fat-finger guard: ≥30% off the market reference. The taker can
+              still fill — far-from-market taking is legitimate — but only
+              after ticking the explicit acknowledgment below. */}
+          {priceDeviation && deviationRef ? (
+            <div className="px-3 py-2.5 rounded-md border border-amber-500/40 bg-amber-500/[0.06] text-[12px] text-amber-300 leading-relaxed">
+              <div>
+                {t(
+                  priceDeviation.above
+                    ? "trade.fillModal.deviationWarnAbove"
+                    : "trade.fillModal.deviationWarnBelow",
+                )
+                  .replace("{pct}", String(priceDeviation.pct))
+                  .replace("{ref}", formatPrice(deviationRef.price))}
+              </div>
+              {!isAlreadyDone && phase !== "error" ? (
+                <label className="mt-2 flex items-start gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={deviationAck}
+                    onChange={(e) => setDeviationAck(e.target.checked)}
+                    className="mt-0.5 accent-amber-400"
+                  />
+                  <span>{t("trade.fillModal.deviationAck")}</span>
+                </label>
+              ) : null}
+            </div>
+          ) : null}
 
           {/* H-05: taker-side fill amount, in the token the taker receives.
               Prefilled with the full remaining amount; editable down for a

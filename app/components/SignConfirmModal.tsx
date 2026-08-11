@@ -4,6 +4,7 @@ import { formatUnits, type Address } from "viem";
 import { useEffect, useMemo, useState } from "react";
 
 import { SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
+import { formatPrice } from "@/lib/format-price";
 import { useTranslator } from "@/lib/locale-context";
 import type { Order } from "@/lib/order";
 import { symbolLabel, type Token } from "@/lib/tokens";
@@ -37,6 +38,14 @@ export type SignConfirmContext = {
   minTakerAmount?: bigint;
   /** Bigint max price ratio (1e6 default). 0 means inactive. */
   maxPriceRatio?: bigint;
+  /**
+   * Fat-finger guard (rule 5). undefined → no market reference existed, the
+   * rule row is omitted. null → checked, price within ±30% of reference.
+   * Object → deviation ≥30%: the rule fails, which routes the footer into
+   * the hold-3s "Sign anyway" override — the explicit "yes, I really mean
+   * this price" confirmation.
+   */
+  priceDeviation?: { pct: number; above: boolean; refPrice: number } | null;
 };
 
 export function SignConfirmModal({
@@ -332,7 +341,7 @@ function evaluateRules(
   const selfOk =
     ctx.order.maker.toLowerCase() === ctx.walletAddress.toLowerCase();
 
-  return [
+  const rules: RuleResult[] = [
     {
       id: "domain",
       label: officialDex
@@ -371,6 +380,33 @@ function evaluateRules(
       ok: ratioOk,
     },
   ];
+
+  // Rule 5 — fat-finger price deviation. Only rendered when a market
+  // reference existed to check against (see SignConfirmContext).
+  if (ctx.priceDeviation !== undefined) {
+    const dev = ctx.priceDeviation;
+    rules.push({
+      id: "deviation",
+      label:
+        dev === null
+          ? t("trade.signModal.ruleDeviationOk")
+          : t(
+              dev.above
+                ? "trade.signModal.ruleDeviationFailAbove"
+                : "trade.signModal.ruleDeviationFailBelow",
+            ).replace("{pct}", String(dev.pct)),
+      ok: dev === null,
+      detail:
+        dev === null
+          ? undefined
+          : t("trade.signModal.ruleDeviationDetail").replace(
+              "{ref}",
+              formatPrice(dev.refPrice),
+            ),
+    });
+  }
+
+  return rules;
 }
 
 function fmt(amount: bigint, decimals: number): string {

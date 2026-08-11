@@ -230,7 +230,8 @@ export type Dictionary = {
   "trade.placeOrder.insufficientEthWeth": string;
   "trade.placeOrder.insufficientBalance": string;
   "trade.placeOrder.amountTooSmall": string;
-  "trade.placeOrder.priceFarFromMarket": string;
+  "trade.placeOrder.priceDeviationAbove": string;
+  "trade.placeOrder.priceDeviationBelow": string;
   "trade.placeOrder.crossesBookBuy": string;
   "trade.placeOrder.crossesBookSell": string;
   "trade.placeOrder.orderSigned": string;
@@ -285,6 +286,10 @@ export type Dictionary = {
   "trade.signModal.ruleFloorFail": string;
   "trade.signModal.ruleRatioOk": string;
   "trade.signModal.ruleRatioFail": string;
+  "trade.signModal.ruleDeviationOk": string;
+  "trade.signModal.ruleDeviationFailAbove": string;
+  "trade.signModal.ruleDeviationFailBelow": string;
+  "trade.signModal.ruleDeviationDetail": string;
 
   // Trade page — StatsBar
   "trade.statsBar.volume24h": string;
@@ -346,6 +351,9 @@ export type Dictionary = {
   "trade.fillModal.fillAmountRange": string;
   "trade.fillModal.fillAmountTooSmall": string;
   "trade.fillModal.partialHint": string;
+  "trade.fillModal.deviationWarnAbove": string;
+  "trade.fillModal.deviationWarnBelow": string;
+  "trade.fillModal.deviationAck": string;
   "trade.fillModal.orderStatus": string;
   "trade.fillModal.cantFillOwn": string;
   "trade.fillModal.missingPermit": string;
@@ -683,7 +691,10 @@ const en: Dictionary = {
   "trade.placeOrder.insufficientEthWeth": "Insufficient ETH + WETH balance",
   "trade.placeOrder.insufficientBalance": "Insufficient balance",
   "trade.placeOrder.amountTooSmall": "Amount too small",
-  "trade.placeOrder.priceFarFromMarket": "Heads up: this price is far from the last traded price. Double-check before signing.",
+  "trade.placeOrder.priceDeviationAbove":
+    "Warning: your price is {pct}% ABOVE the market reference ({ref}). Please double-check for a typo before signing.",
+  "trade.placeOrder.priceDeviationBelow":
+    "Warning: your price is {pct}% BELOW the market reference ({ref}). Please double-check for a typo before signing.",
   "trade.placeOrder.crossesBookBuy":
     "This buy price is at or above the lowest resting ask ({price}). Your order crosses the book and can be filled immediately at your price. Based on all resting orders, including any the board currently hides as unfillable.",
   "trade.placeOrder.crossesBookSell":
@@ -748,6 +759,13 @@ const en: Dictionary = {
   "trade.signModal.ruleRatioOk": "Price ratio is within safe bounds",
   "trade.signModal.ruleRatioFail":
     "Price ratio exceeds the safety cap (extreme price)",
+  "trade.signModal.ruleDeviationOk":
+    "Price is within 30% of the market reference",
+  "trade.signModal.ruleDeviationFailAbove":
+    "Price is {pct}% ABOVE the market reference — check for a typo",
+  "trade.signModal.ruleDeviationFailBelow":
+    "Price is {pct}% BELOW the market reference — check for a typo",
+  "trade.signModal.ruleDeviationDetail": "market reference: {ref}",
 
   // Trade page — StatsBar
   "trade.statsBar.volume24h": "24H Volume",
@@ -828,6 +846,12 @@ const en: Dictionary = {
     "This amount is too small to settle — the payment side rounds to zero.",
   "trade.fillModal.partialHint":
     "You can fill part of this order. The remainder stays on the book.",
+  "trade.fillModal.deviationWarnAbove":
+    "Warning: this order's price is {pct}% ABOVE the market reference ({ref}). Filling it means paying well over market — double-check before you proceed.",
+  "trade.fillModal.deviationWarnBelow":
+    "Warning: this order's price is {pct}% BELOW the market reference ({ref}). Filling it means selling well under market — double-check before you proceed.",
+  "trade.fillModal.deviationAck":
+    "I understand this price is far from the market reference and I want to proceed anyway.",
   "trade.fillModal.orderStatus": "Order status",
   "trade.fillModal.cantFillOwn": "You can't fill your own order. Use Cancel instead.",
   "trade.fillModal.missingPermit":
@@ -1174,7 +1198,10 @@ const ja: Dictionary = {
   "trade.placeOrder.insufficientEthWeth": "ETH + WETH の残高が不足しています",
   "trade.placeOrder.insufficientBalance": "残高が不足しています",
   "trade.placeOrder.amountTooSmall": "数量が小さすぎます",
-  "trade.placeOrder.priceFarFromMarket": "注意: この価格は直近の約定価格から大きく離れています。署名前に確認してください。",
+  "trade.placeOrder.priceDeviationAbove":
+    "警告: この価格は基準価格（{ref}）より {pct}% 高くなっています。入力ミスがないか署名前にご確認ください。",
+  "trade.placeOrder.priceDeviationBelow":
+    "警告: この価格は基準価格（{ref}）より {pct}% 低くなっています。入力ミスがないか署名前にご確認ください。",
   "trade.placeOrder.crossesBookBuy":
     "この買い価格は最良売り気配（{price}）以上です。板とクロスしており、この価格で即座に約定される可能性があります。※板上の全未約定注文（残高不足等で非表示のものを含む）に基づく警告です。",
   "trade.placeOrder.crossesBookSell":
@@ -1239,6 +1266,12 @@ const ja: Dictionary = {
   "trade.signModal.ruleRatioOk": "価格比は安全範囲内です",
   "trade.signModal.ruleRatioFail":
     "価格比が安全上限を超えています（異常価格）",
+  "trade.signModal.ruleDeviationOk": "価格は基準価格の±30%以内です",
+  "trade.signModal.ruleDeviationFailAbove":
+    "価格が基準価格より {pct}% 高くなっています — 入力ミスにご注意",
+  "trade.signModal.ruleDeviationFailBelow":
+    "価格が基準価格より {pct}% 低くなっています — 入力ミスにご注意",
+  "trade.signModal.ruleDeviationDetail": "基準価格: {ref}",
 
   // Trade page — StatsBar
   "trade.statsBar.volume24h": "24H 出来高",
@@ -1320,6 +1353,12 @@ const ja: Dictionary = {
     "数量が小さすぎて決済できません（支払側が 0 に丸められます）。",
   "trade.fillModal.partialHint":
     "この注文は一部だけ約定できます。残りは板に残ります。",
+  "trade.fillModal.deviationWarnAbove":
+    "警告: この注文の価格は基準価格（{ref}）より {pct}% 高くなっています。約定すると市場価格より大幅に高く買うことになります。よくご確認ください。",
+  "trade.fillModal.deviationWarnBelow":
+    "警告: この注文の価格は基準価格（{ref}）より {pct}% 低くなっています。約定すると市場価格より大幅に安く売ることになります。よくご確認ください。",
+  "trade.fillModal.deviationAck":
+    "価格が基準価格から大きく離れていることを理解した上で続行します。",
   "trade.fillModal.orderStatus": "注文ステータス",
   "trade.fillModal.cantFillOwn": "自分の注文は約定できません。代わりにキャンセルしてください。",
   "trade.fillModal.missingPermit":
