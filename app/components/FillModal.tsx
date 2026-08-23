@@ -1,20 +1,30 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { type Address, type Hex, formatUnits } from "viem";
+import { type Address, type Hex, formatUnits, parseUnits } from "viem";
 import {
   useAccount,
   useChainId,
+  usePublicClient,
+  useReadContract,
   useSignTypedData,
   useWaitForTransactionReceipt,
   useWriteContract,
 } from "wagmi";
 
 import { SCENTDEX_V5_ABI } from "@/lib/abi";
-import { SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
+import { TermsConsentCheckbox } from "@/app/components/TermsConsentCheckbox";
+import { PERMIT2_ABI } from "@/lib/abi";
+import { PERMIT2_ADDRESS, SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
 import { useTranslator } from "@/lib/locale-context";
+import { useBestPrices } from "@/lib/hooks/useBestPrices";
+import { useFillEvents } from "@/lib/hooks/useFillEvents";
+import { useIsWrongNetwork } from "@/lib/hooks/useNetworkGuard";
 import { useTokenStatus } from "@/lib/hooks/useTokenStatus";
-import { parseFillError } from "@/lib/parse-fill-error";
+import { useWeth } from "@/lib/hooks/useWeth";
+import { fetchRevertError, parseFillError } from "@/lib/parse-fill-error";
+import { formatPrice } from "@/lib/format-price";
+import { deviationWarning, referencePrice } from "@/lib/price-deviation";
 import {
   buildPermit2Domain,
   EMPTY_PERMIT_SIGNATURE,
@@ -25,10 +35,61 @@ import {
   type PermitSingle,
   type SerialisedPermitSingle,
 } from "@/lib/permit2";
-import { TOKENS, type Token } from "@/lib/tokens";
+import { PAIRS, TOKENS, symbolLabel, type Token } from "@/lib/tokens";
 
 /** ms before "Confirming on chain…" gets a "tx is taking too long" warning. */
 const CONFIRM_TIMEOUT_MS = 90_000;
+
+/**
+ * ms a final error screen stays up before the modal auto-closes itself.
+ * Sized to give a reader enough time to absorb a one-line error
+ * (~5 s at conversational reading speed) plus a buffer, while staying
+ * inside the 5–7 s autodismiss window used by mainstream UI guidelines
+ * (Apple HIG, Material). Only applies to the `error` phase; the `done`
+ * phase is left to the parent's success acknowledgment UX.
+ */
+const ERROR_AUTO_CLOSE_MS = 6_000;
+
+/**
+ * Fire-and-forget post-fill mirror with retry. Hits
+ * POST /api/orders/[hash]/filled and retries on 202 (tx not yet mined) and
+ * 5xx (transient backend) with exponential backoff. Stops on 2xx or 4xx
+ * (other than 202). All errors are swallowed silently — by design the
+ * browser console must not leak API paths or RPC details (sec policy).
+ *
+ * If every attempt fails the order row sits stale until the next manual
+ * sync surface lands, which is materially better than the previous
+ * single-shot fire-and-forget that gave up on the first transient error
+ * (the bug behind "filled orders linger on the board, no Filled in
+ * History").
+ */
+async function syncFilledWithRetry(
+  orderHash: Hex,
+  txHash: Hex,
+  chainId: number,
+): Promise<void> {
+  const maxAttempts = 4;
+  const baseDelayMs = 2_000;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const res = await fetch(`/api/orders/${orderHash}/filled`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ txHash, chainId }),
+      });
+      if (res.ok) return;
+      // 202 = receipt not yet mined; 5xx = transient backend. Both retryable.
+      // Any other 4xx is permanent (bad payload, order not found, etc.) —
+      // give up rather than spam the API.
+      if (res.status !== 202 && res.status < 500) return;
+    } catch {
+      // Network-level error — retry.
+    }
+    if (attempt < maxAttempts - 1) {
+      await new Promise((r) => setTimeout(r, baseDelayMs * 2 ** attempt));
+    }
+  }
+}
 
 /**
  * Fill modal — opens when a taker clicks a row in the order book.
@@ -72,6 +133,7 @@ export type FillOrder = {
 
 type Phase =
   | "idle"
+  | "wrapping-eth"
   | "approving-erc20"
   | "awaiting-permit-sig"
   | "submitting-tx"
@@ -93,6 +155,9 @@ export function FillModal({
   const { address: account } = useAccount();
   const chainId = useChainId();
   const dexAddress = SCENTDEX_V5_ADDRESS[chainId];
+  // Used to re-simulate a reverted fill tx so we can extract its concrete
+  // revert reason (the tx receipt alone does not carry it).
+  const publicClient = usePublicClient({ chainId });
 
   // The token the taker GIVES UP is the order's takerToken (and the
   // taker RECEIVES the order's makerToken). Approval gate + permit2
@@ -126,9 +191,85 @@ export function FillModal({
     } as unknown as Token,
   );
 
+  // Auto-wrap (SDT/WETH test market): when the taker pays in WETH but their
+  // WETH balance can't cover the fill, a WETH9.deposit() leg is inserted
+  // before the approve/permit/fill pipeline. Inert on non-WETH pairs.
+  const weth = useWeth();
+  const isWrongNetwork = useIsWrongNetwork();
+
+  // Fat-finger guard (2026-08-11): market reference for the pair being
+  // filled, so a taker about to settle ≥30% off market sees a warning and
+  // must explicitly acknowledge it. Both hooks are gated on `open` — the
+  // modal stays mounted while closed and must not poll in that state. The
+  // PAIRS[0] fallback is inert (enabled=false whenever pairObj is missing).
+  const pairObj = useMemo(
+    () =>
+      order
+        ? PAIRS.find((p) => `${p.base}/${p.quote}` === order.pair)
+        : undefined,
+    [order],
+  );
+  const deviationStats = useFillEvents(pairObj ?? PAIRS[0], {
+    enabled: open && Boolean(pairObj),
+  });
+  // excludeOrderHash: the order being filled must not anchor its own
+  // deviation reference — see deriveBestPrices.
+  const deviationBook = useBestPrices(pairObj ?? PAIRS[0], {
+    enabled: open && Boolean(pairObj),
+    excludeOrderHash: order?.orderHash,
+  });
+  const [deviationAck, setDeviationAck] = useState(false);
+
   const t = useTranslator();
   const { signTypedDataAsync, isPending: signing } = useSignTypedData();
   const writeTx = useWriteContract();
+
+  // V6 ADR-0007: previewFee is the authoritative fee-disclosure source.
+  // For Case B fills the taker absorbs a 10% carve-out on the maker→taker
+  // leg; without surfacing that here the taker would expect more makerToken
+  // than they actually receive. The contract returns (0, address(0)) for
+  // any non-fillable state (paused / cancelled / expired / sized wrong),
+  // so a non-zero feeAmount IS the live, on-chain truth about this fill.
+  // H-05 partial fill: taker-chosen fill size, denominated in the order's
+  // makerToken (what the taker RECEIVES — same unit as the contract's
+  // fillMakerAmount parameter). Prefilled with the exact remaining amount
+  // on open, so the default click is still a full fill.
+  const [fillInput, setFillInput] = useState("");
+
+  // H-05: parse the taker's chosen fill size and mirror the contract's
+  // partial-fill payment maths so preview, permit amount and the on-chain
+  // call all agree to the wei.
+  const fillCalc = useMemo(
+    () => computeFill(order, fillInput, makerTokenMeta?.decimals ?? 18),
+    [order, fillInput, makerTokenMeta?.decimals],
+  );
+
+  const previewArgs = useMemo(() => {
+    if (!order || fillCalc.fillMaker === null) return undefined;
+    return [
+      {
+        maker: order.order.maker,
+        makerToken: order.order.makerToken,
+        takerToken: order.order.takerToken,
+        makerAmount: BigInt(order.order.makerAmount),
+        takerAmount: BigInt(order.order.takerAmount),
+        expiry: BigInt(order.order.expiry),
+        nonce: BigInt(order.order.nonce),
+        salt: order.order.salt,
+        feeSide: order.order.feeSide,
+        feeBps: order.order.feeBps,
+      },
+      fillCalc.fillMaker,
+    ] as const;
+  }, [order, fillCalc.fillMaker]);
+  const previewQuery = useReadContract({
+    abi: SCENTDEX_V5_ABI,
+    address: dexAddress,
+    functionName: "previewFee",
+    args: previewArgs,
+    query: { enabled: Boolean(dexAddress && previewArgs) },
+  });
+
   const writeReceipt = useWaitForTransactionReceipt({
     hash: writeTx.data,
     query: { enabled: Boolean(writeTx.data) },
@@ -136,6 +277,11 @@ export function FillModal({
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
+  // Per-order click-wrap consent. Reset to `false` when the modal closes
+  // and after every submit attempt (success or failure) so the taker must
+  // re-tick the box for each fill — i.e. the user re-affirms the Terms on
+  // every transaction.
+  const [termsAgreed, setTermsAgreed] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Reset transient state every time we (re)open with a different order.
@@ -143,10 +289,24 @@ export function FillModal({
     if (!open) return;
     setPhase("idle");
     setError(null);
+    setDeviationAck(false);
+    // Prefill the fill-amount input with the exact remaining makerToken
+    // amount (formatUnits round-trips losslessly through parseUnits), so
+    // the default action stays "fill everything".
+    if (order) {
+      const remaining =
+        BigInt(order.order.makerAmount) - BigInt(order.filledMakerAmount);
+      setFillInput(
+        remaining > 0n
+          ? formatUnits(remaining, makerTokenMeta?.decimals ?? 18)
+          : "",
+      );
+    }
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, order?.orderHash]);
 
   // Catch wallet-side submit errors. wagmi's useWriteContract surfaces
@@ -166,8 +326,10 @@ export function FillModal({
 
   // Arm a watchdog the moment a tx hash exists. If the receipt never
   // resolves (mempool starvation, frontrun in a race fill, taker mining
-  // pool issues, …) the user gets an explicit "check your wallet" hint
-  // instead of an infinite "Confirming on-chain…" spinner.
+  // pool issues, …) the user gets an explicit failure state instead of
+  // an infinite "Confirming on-chain…" spinner. The tx may still land
+  // later — wallet history is the source of truth for that — but the
+  // modal does not stay stuck.
   useEffect(() => {
     if (!writeTx.data) return;
     if (writeReceipt.isSuccess || writeReceipt.isError) return;
@@ -175,10 +337,8 @@ export function FillModal({
     timeoutRef.current = setTimeout(() => {
       // Only act if the receipt is still pending.
       if (!writeReceipt.isSuccess && !writeReceipt.isError) {
+        setPhase("error");
         setError(t("trade.fillError.timeout"));
-        // Don't transition out of confirming-tx — the receipt may still
-        // land. Surfacing the warning as `error` is enough to break the
-        // visual silence.
       }
     }, CONFIRM_TIMEOUT_MS);
     return () => {
@@ -195,38 +355,60 @@ export function FillModal({
     if (!writeTx.data) return;
     setPhase(writeReceipt.isLoading ? "confirming-tx" : phase);
     if (writeReceipt.isSuccess) {
-      // Mirror the OrderFilled into the off-chain book BEFORE telling the
-      // parent to refresh. The /api/orders/[hash]/filled endpoint pulls the
-      // receipt server-side, decodes the OrderFilled log, and flips the
-      // order's status. Until that call lands, the board polling can still
-      // return status='open' and the row would linger.
-      //
-      // Fire-and-forget on errors: the taker already got their tokens at
-      // this point and the worst case is that the row sits stale until the
-      // next manual sync — far better than blocking the modal's "done" UI.
-      // Errors are swallowed silently to keep API paths / RPC URLs out of
-      // the browser console (sec policy: nothing identifiable in devtools).
-      if (order) {
-        void fetch(`/api/orders/${order.orderHash}/filled`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            txHash: writeTx.data,
-            chainId,
-          }),
-        })
-          .catch(() => {
-            // intentional no-op — see comment above
-          })
-          .finally(() => onFilled());
-      } else {
-        onFilled();
+      const receipt = writeReceipt.data;
+      // viem resolves `isSuccess === true` even for reverted txs (the
+      // receipt itself was fetched successfully). Distinguish success
+      // vs revert via `receipt.status` before treating it as a fill.
+      if (receipt?.status === "reverted") {
+        setPhase("error");
+        // Best-effort: re-simulate the tx to recover the concrete custom-
+        // error name (e.g. FillExceedsMaker → "already filled by another
+        // taker"). Show a generic "reverted" copy immediately so the user
+        // is never left looking at a spinner while the simulation runs.
+        setError(t("trade.fillError.reverted"));
+        if (publicClient && writeTx.data) {
+          const txHash = writeTx.data;
+          void (async () => {
+            const revertError = await fetchRevertError(
+              publicClient,
+              txHash,
+              receipt,
+              SCENTDEX_V5_ABI,
+            );
+            if (revertError) {
+              setError(parseFillError(revertError, t));
+            }
+          })();
+        }
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+          timeoutRef.current = null;
+        }
+        return;
       }
+      // Successful fill — mirror the OrderFilled into the off-chain book.
+      // The /api/orders/[hash]/filled endpoint pulls the receipt server-
+      // side, decodes the OrderFilled log, and flips the order's status.
+      // Until that call lands the board polling can still return
+      // status='open' and the row would linger; same for the History tab
+      // not showing the Filled event.
+      //
+      // Run the sync in the background with retry (handles 202 receipt-
+      // not-yet-mined and 5xx transients). `onFilled()` fires immediately
+      // so the modal's "done" UI is not blocked on backend latency — the
+      // parent's orderbook polling will pick up the status flip as soon
+      // as the mirror lands.
+      if (order && writeTx.data) {
+        void syncFilledWithRetry(order.orderHash, writeTx.data, chainId);
+      }
+      onFilled();
       setPhase("done");
+      setTermsAgreed(false);
     }
     if (writeReceipt.isError) {
       setPhase("error");
       setError(parseFillError(writeReceipt.error, t));
+      setTermsAgreed(false);
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
@@ -234,6 +416,63 @@ export function FillModal({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [writeReceipt.isSuccess, writeReceipt.isError, writeReceipt.isLoading]);
+
+  // Auto-advance once the auto-wrap deposit confirms: continue to the
+  // ERC-20 approve leg if it's missing, otherwise straight into the
+  // permit-sign + fillOrder pipeline — the same chain a direct Fill click
+  // takes when the WETH balance is already sufficient.
+  useEffect(() => {
+    if (phase !== "wrapping-eth") return;
+    if (!weth.isWrapConfirmed) return;
+    if (!takerStatus.isErc20Approved && Boolean(takerTokenAddr)) {
+      setPhase("approving-erc20");
+      takerStatus.approve();
+      return;
+    }
+    setPhase("idle");
+    void onFillClick();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, weth.isWrapConfirmed]);
+
+  // Auto-advance once the taker's ERC-20 → Permit2 approval confirms.
+  // Without this the modal parked on "WETH を承認中…" after the approve tx
+  // had already landed on-chain, and the taker had to click that
+  // loading-looking button again to reach the permit-sign + fillOrder step
+  // (tester: "承認中のボタンを押したらパーミットに進んだ"). Mirrors the
+  // wrap-advance effect above.
+  useEffect(() => {
+    if (phase !== "approving-erc20") return;
+    if (takerStatus.isApproving) return; // still submitting / confirming
+    if (!takerStatus.isErc20Approved) return; // not landed yet (or rejected)
+    setPhase("idle");
+    void onFillClick();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, takerStatus.isApproving, takerStatus.isErc20Approved]);
+
+  // Surface a wrap failure (user reject / RPC error) via the normal error
+  // phase instead of leaving the modal stuck on "wrapping".
+  useEffect(() => {
+    if (phase !== "wrapping-eth" || !weth.wrapError) return;
+    setPhase("error");
+    setError(parseFillError(weth.wrapError, t));
+    setTermsAgreed(false);
+    weth.resetWrap();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, weth.wrapError]);
+
+  // Auto-close the modal a few seconds after entering the error phase so
+  // a stale failure screen doesn't linger after the user has had time to
+  // read the message. Done phase is intentionally excluded — the parent
+  // owns the success acknowledgment UX (it can keep the modal up, replace
+  // it with a confirmation, or close on its own cadence).
+  useEffect(() => {
+    if (phase !== "error") return;
+    const id = setTimeout(() => {
+      onClose();
+    }, ERROR_AUTO_CLOSE_MS);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
 
   if (!open || !order) return null;
 
@@ -243,22 +482,87 @@ export function FillModal({
   const takerAmount = BigInt(order.order.takerAmount);
   const filledMaker = BigInt(order.filledMakerAmount);
   const remainingMaker = makerAmount - filledMaker;
-  // Proportional remaining taker.
-  const remainingTaker =
-    makerAmount > 0n ? (takerAmount * remainingMaker) / makerAmount : 0n;
+  // Taker-chosen fill size (H-05). Invalid input keeps the modal open but
+  // disables Fill; the 0n fallbacks keep the display rows rendering.
+  const fillMaker = fillCalc.fillMaker ?? 0n;
+  const fillTaker = fillCalc.fillTaker ?? 0n;
 
-  const youReceive = formatBalance(remainingMaker, baseDecimals);
-  const youPay = formatBalance(remainingTaker, quoteDecimals);
+  const youReceive = formatBalance(fillMaker, baseDecimals);
+  const youPay = formatBalance(fillTaker, quoteDecimals);
 
-  const youReceiveSym = makerTokenMeta?.symbol ?? "?";
-  const youPaySym = takerTokenMeta?.symbol ?? "?";
+  // Display-only labels. symbolLabel surfaces WETH-TEST as "WETH-TEST（ETH）".
+  const youReceiveSym = makerTokenMeta ? symbolLabel(makerTokenMeta.symbol) : "?";
+  const youPaySym = takerTokenMeta ? symbolLabel(takerTokenMeta.symbol) : "?";
+
+  // V6 Case B disclosure: feeAmount / feeToken come from on-chain previewFee.
+  // Case A: feeToken == takerToken — the taker's makerToken receive is full,
+  //         and the fee is carved from the taker's takerToken payment leg
+  //         (the maker absorbs it; existing PlaceOrder UI shows this).
+  // Case B: feeToken == makerToken — the taker's makerToken receive is
+  //         reduced by feeAmount. Surface gross / fee / net to keep the
+  //         taker's expectations aligned with what actually lands in their
+  //         wallet.
+  //
+  // While previewQuery is loading or errored we deliberately do NOT render
+  // the legacy "You receive: <gross>" row — it would understate the fee in
+  // a Case B fill. Fill is also disabled in those states (see buttonDisabled
+  // below) so the taker can't act on a stale disclosure.
+  const previewReady = previewQuery.isSuccess && previewQuery.data !== undefined;
+  const previewFee = previewQuery.data;
+  const feeAmount = previewFee?.[0] ?? 0n;
+  const feeToken =
+    previewFee?.[1] ?? ("0x0000000000000000000000000000000000000000" as Address);
+  const feeAppliesToTakerReceive =
+    previewReady &&
+    feeAmount > 0n &&
+    feeToken.toLowerCase() === order.order.makerToken.toLowerCase();
+  const netReceive = feeAppliesToTakerReceive
+    ? fillMaker - feeAmount
+    : fillMaker;
+  const youReceiveNet = formatBalance(netReceive, baseDecimals);
+  const youReceiveFee = formatBalance(feeAmount, baseDecimals);
+  const feeBpsForLabel = order.order.feeBps;
+  const feeBpsDisplay = (feeBpsForLabel / 100).toLocaleString("en-US", {
+    maximumFractionDigits: 2,
+  });
+  // Unit price from the ORDER's full amounts — stable regardless of the
+  // chosen fill size (a partial fill settles at the same unit price).
   const priceNumber =
-    Number(formatUnits(remainingTaker, quoteDecimals)) /
-    Math.max(Number(formatUnits(remainingMaker, baseDecimals)), 1e-18);
+    Number(formatUnits(takerAmount, quoteDecimals)) /
+    Math.max(Number(formatUnits(makerAmount, baseDecimals)), 1e-18);
+
+  // Fat-finger guard: warn when this order's price is ≥30% off the market
+  // reference (last trade → book mid → single resting side, this order
+  // itself excluded). priceNumber is quote-per-base only when the maker is
+  // the base-seller; for a maker BUY order the taker delivers base, and
+  // takerAmount/makerAmount is base-per-quote — invert so the deviation
+  // compares like with like.
+  const makerSellsBase =
+    pairObj !== undefined &&
+    makerTokenMeta !== undefined &&
+    makerTokenMeta.symbol === pairObj.base;
+  const orderUnitPrice = makerSellsBase
+    ? priceNumber
+    : priceNumber > 0
+    ? 1 / priceNumber
+    : 0;
+  const deviationRef = pairObj
+    ? referencePrice(
+        deviationStats.latestPrice,
+        deviationBook.bestBid,
+        deviationBook.bestAsk,
+      )
+    : null;
+  const priceDeviation = deviationRef
+    ? deviationWarning(orderUnitPrice, deviationRef.price)
+    : null;
 
   const notSelf =
     account && order.order.maker.toLowerCase() !== account.toLowerCase();
-  const onSupportedChain = Boolean(dexAddress);
+  // onSupportedChain must reflect the wallet's REAL chain: dexAddress is keyed
+  // off the clamped useChainId (mainnet even on Polygon), so without the
+  // wrong-network check a taker on Polygon could try to fill (tester E-04).
+  const onSupportedChain = Boolean(dexAddress) && !isWrongNetwork;
   const hasMakerPermit = Boolean(order.permitSingle && order.permitSignature);
   const isAlreadyDone =
     phase === "done" ||
@@ -269,9 +573,36 @@ export function FillModal({
   // -- Action: ERC-20 → Permit2 approve (one-time, taker side) -----------------
   const needsErc20Approval = !takerStatus.isErc20Approved && Boolean(takerTokenAddr);
 
+  // -- Action: auto-wrap (taker pays WETH, balance short) -----------------------
+  const takerIsWeth = Boolean(takerTokenMeta?.wrapsNative);
+  const wethShortfall = takerIsWeth ? weth.shortfallFor(fillTaker) : 0n;
+  const needsWrap = wethShortfall > 0n;
+
+  // -- Taker balance guard (2026-07-24) -----------------------------------------
+  // A taker whose pay-token balance can't cover this fill must be stopped
+  // HERE, before the approve/permit pipeline ever reaches the wallet —
+  // otherwise they hit an approval popup for a fill that can only revert.
+  // On wrapped-native pairs spendable = WETH + auto-wrappable ETH (the wrap
+  // leg covers the difference); elsewhere it's the plain ERC-20 balance.
+  const takerSpendable = takerIsWeth ? weth.spendable : takerStatus.balance;
+  const takerBalanceLoading = takerIsWeth
+    ? weth.balancesLoading
+    : takerStatus.balanceLoading;
+  const insufficientTakerBalance =
+    Boolean(account) &&
+    onSupportedChain &&
+    !takerBalanceLoading &&
+    fillCalc.fillTaker !== null &&
+    fillCalc.fillTaker > 0n &&
+    takerSpendable < fillCalc.fillTaker;
+
   // -- Action: sign per-fill PermitSingle then fillOrder() ---------------------
   async function onFillClick() {
     if (!account || !dexAddress || !order) return;
+    // H-05: never submit with an invalid / zero fill size — the button is
+    // disabled in that state, but the wrap auto-advance path also lands here.
+    if (fillCalc.fillMaker === null || fillCalc.fillTaker === null || fillCalc.fillTaker === 0n)
+      return;
     if (!hasMakerPermit) {
       setError(
         "this order was signed before per-order Permit2 was wired up — ask the maker to re-post",
@@ -282,12 +613,55 @@ export function FillModal({
 
     setError(null);
 
+    // Audit C-L1: the fillTaker shown in the modal was computed from the
+    // off-chain book's filled amounts, which can lag if another taker fills
+    // part of this order while the modal is open. Stale values are proven to
+    // never UNDER-permit (ceil-rounded prior fills only shrink the remaining
+    // quota), but they can leave a dust of idle allowance behind. Re-read the
+    // on-chain fill state right before signing so the Permit2 amount matches
+    // the contract's actual pull to the wei; fall back to the (sufficient)
+    // stale value if the read fails.
+    let permitTakerAmount = fillTaker;
+    if (publicClient) {
+      try {
+        const [freshFilledMaker, freshFilledTaker] = (await Promise.all([
+          publicClient.readContract({
+            address: dexAddress,
+            abi: SCENTDEX_V5_ABI,
+            functionName: "filledMakerAmount",
+            args: [order.orderHash],
+          }),
+          publicClient.readContract({
+            address: dexAddress,
+            abi: SCENTDEX_V5_ABI,
+            functionName: "filledTakerAmount",
+            args: [order.orderHash],
+          }),
+        ])) as [bigint, bigint];
+        const fresh = proportionalTakerAmount(
+          fillMaker,
+          makerAmount,
+          takerAmount,
+          freshFilledMaker,
+          freshFilledTaker,
+        );
+        // fresh === 0n means the fill can no longer settle (zero residual /
+        // overfilled) — keep the stale amount and let the pre-flight
+        // simulation surface the concrete revert to the user.
+        if (fresh > 0n) permitTakerAmount = fresh;
+      } catch {
+        // RPC hiccup — stale value is sufficient by construction.
+      }
+    }
+
     // 1) Sign taker PermitSingle (Permit2 → DEX, scoped to this fill).
     const orderExpiry = BigInt(order.order.expiry);
     const takerPermit: PermitSingle = {
       details: {
         token: order.order.takerToken,
-        amount: remainingTaker,
+        // Exactly the contract-side payment for this fill size (ceil-rounded
+        // partials included) — no idle allowance beyond this fill.
+        amount: permitTakerAmount,
         expiration: Number(orderExpiry),
         nonce: takerStatus.permit2DexNonce,
       },
@@ -307,60 +681,139 @@ export function FillModal({
     } catch (e) {
       setPhase("error");
       setError(parseFillError(e, t));
+      setTermsAgreed(false);
       return;
     }
 
     // 2) fillOrder() on-chain.
-    const makerPermitReified = reifyPermitSingle(order.permitSingle!);
+    //
+    // Partial-fill correctness: the maker's stored PermitSingle is single-use
+    // — its Permit2 nonce is consumed the first time _fillOrder calls
+    // permit2.permit(). Re-submitting it for a later fill of the REMAINING
+    // amount reverts InvalidNonce (tester H-05). The contract skips the
+    // permit() call when makerPermitSignature is empty (ScentDexV6:1159),
+    // pulling instead against the allowance the first fill already
+    // registered. So: if the maker's registered Permit2 allowance already
+    // covers this fill and hasn't expired, send an EMPTY maker permit;
+    // otherwise send the stored one (first fill, which registers it).
+    let makerPermitStruct = reifyPermitSingle(order.permitSingle!);
+    let makerPermitSig: Hex = order.permitSignature as Hex;
+    if (publicClient) {
+      try {
+        const [regAmount, regExpiration] = (await publicClient.readContract({
+          address: PERMIT2_ADDRESS,
+          abi: PERMIT2_ABI,
+          functionName: "allowance",
+          args: [order.order.maker, order.order.makerToken, dexAddress],
+        })) as readonly [bigint, number, number];
+        const nowSec = BigInt(Math.floor(Date.now() / 1000));
+        if (regAmount >= fillMaker && BigInt(regExpiration) > nowSec) {
+          makerPermitStruct = EMPTY_PERMIT_SINGLE;
+          makerPermitSig = "0x";
+        }
+      } catch {
+        // RPC hiccup — fall back to the stored permit (correct for the
+        // first fill; a redundant re-permit on a later fill would revert,
+        // surfaced to the taker as a normal fill error).
+      }
+    }
+
+    const fillArgs = [
+      {
+        maker: order.order.maker,
+        makerToken: order.order.makerToken,
+        takerToken: order.order.takerToken,
+        makerAmount: BigInt(order.order.makerAmount),
+        takerAmount: BigInt(order.order.takerAmount),
+        expiry: BigInt(order.order.expiry),
+        nonce: BigInt(order.order.nonce),
+        salt: order.order.salt,
+        feeSide: order.order.feeSide,
+        feeBps: order.order.feeBps,
+      },
+      order.signature,
+      fillMaker,
+      {
+        details: {
+          token: takerPermit.details.token,
+          amount: takerPermit.details.amount,
+          expiration: takerPermit.details.expiration,
+          nonce: takerPermit.details.nonce,
+        },
+        spender: takerPermit.spender,
+        sigDeadline: takerPermit.sigDeadline,
+      },
+      takerPermitSig,
+      {
+        details: {
+          token: makerPermitStruct.details.token,
+          amount: makerPermitStruct.details.amount,
+          expiration: makerPermitStruct.details.expiration,
+          nonce: makerPermitStruct.details.nonce,
+        },
+        spender: makerPermitStruct.spender,
+        sigDeadline: makerPermitStruct.sigDeadline,
+      },
+      makerPermitSig,
+    ] as const;
 
     try {
       setPhase("submitting-tx");
-      writeTx.writeContract({
-        address: dexAddress,
-        abi: SCENTDEX_V5_ABI,
-        functionName: "fillOrder",
-        args: [
-          {
-            maker: order.order.maker,
-            makerToken: order.order.makerToken,
-            takerToken: order.order.takerToken,
-            makerAmount: BigInt(order.order.makerAmount),
-            takerAmount: BigInt(order.order.takerAmount),
-            expiry: BigInt(order.order.expiry),
-            nonce: BigInt(order.order.nonce),
-            salt: order.order.salt,
-            feeSide: order.order.feeSide,
-            feeBps: order.order.feeBps,
-          },
-          order.signature,
-          remainingMaker,
-          {
-            details: {
-              token: takerPermit.details.token,
-              amount: takerPermit.details.amount,
-              expiration: takerPermit.details.expiration,
-              nonce: takerPermit.details.nonce,
-            },
-            spender: takerPermit.spender,
-            sigDeadline: takerPermit.sigDeadline,
-          },
-          takerPermitSig,
-          {
-            details: {
-              token: makerPermitReified.details.token,
-              amount: makerPermitReified.details.amount,
-              expiration: makerPermitReified.details.expiration,
-              nonce: makerPermitReified.details.nonce,
-            },
-            spender: makerPermitReified.spender,
-            sigDeadline: makerPermitReified.sigDeadline,
-          },
-          order.permitSignature as Hex,
-        ],
-      });
+
+      // Preflight on-chain simulation + gas estimation. wagmi's writeContract
+      // action does not auto-simulate, so without this gate the failing
+      // eth_estimateGas happens *inside* MetaMask, which then falls back to
+      // the block gas limit (~21M) and quotes the taker an absurd fee for a
+      // tx that would just revert.
+      //
+      // We also explicitly pass `gas` to writeContract below using the
+      // viem estimate, which short-circuits MetaMask's own eth_estimateGas
+      // entirely. That closes the residual case where our simulate passes
+      // but the wallet's RPC sees a slightly different mempool/block state
+      // and still falls back to the block gas limit.
+      if (publicClient && account) {
+        const [, gasEstimate] = await Promise.all([
+          publicClient.simulateContract({
+            account,
+            address: dexAddress,
+            abi: SCENTDEX_V5_ABI,
+            functionName: "fillOrder",
+            args: fillArgs,
+          }),
+          publicClient.estimateContractGas({
+            account,
+            address: dexAddress,
+            abi: SCENTDEX_V5_ABI,
+            functionName: "fillOrder",
+            args: fillArgs,
+          }),
+        ]);
+        // 20% headroom over the live estimate. fillOrder is ~200-500K in
+        // practice; the hard cap is a defence-in-depth backstop so even a
+        // runaway estimate can never quote a block-gas-limit fee again.
+        const GAS_CAP = 1_500_000n;
+        const gasWithBuffer = (gasEstimate * 120n) / 100n;
+        const gas = gasWithBuffer > GAS_CAP ? GAS_CAP : gasWithBuffer;
+
+        writeTx.writeContract({
+          address: dexAddress,
+          abi: SCENTDEX_V5_ABI,
+          functionName: "fillOrder",
+          args: fillArgs,
+          gas,
+        });
+      } else {
+        writeTx.writeContract({
+          address: dexAddress,
+          abi: SCENTDEX_V5_ABI,
+          functionName: "fillOrder",
+          args: fillArgs,
+        });
+      }
     } catch (e) {
       setPhase("error");
       setError(parseFillError(e, t));
+      setTermsAgreed(false);
     }
   }
 
@@ -371,6 +824,8 @@ export function FillModal({
     // current status and rebuild a fresh permit) instead of letting them
     // re-press into the same wall.
     if (phase === "error") return t("trade.fillError.closeAndRetry");
+    if (phase === "wrapping-eth" || weth.isWrapping)
+      return t("trade.fillModal.button.wrappingEth");
     if (phase === "approving-erc20" || takerStatus.isApproving)
       return t("trade.fillModal.button.approving").replace("{symbol}", youPaySym);
     if (phase === "awaiting-permit-sig" || signing)
@@ -393,7 +848,15 @@ export function FillModal({
   // and "close in one click" beats either alone.
   const buttonAction =
     phase === "error"
-      ? onClose
+      ? handleClose
+      : needsWrap
+      ? () => {
+          // Reset any previous wrap result BEFORE firing the new deposit so
+          // the auto-advance effect can't see a stale isWrapConfirmed=true.
+          weth.resetWrap();
+          weth.wrap(wethShortfall);
+          setPhase("wrapping-eth");
+        }
       : needsErc20Approval
       ? () => {
           setPhase("approving-erc20");
@@ -401,19 +864,56 @@ export function FillModal({
         }
       : onFillClick;
 
+  // Hold Fill until previewFee resolves: ADR-0007 makes previewFee the
+  // authoritative on-chain fee-disclosure source, and the modal's
+  // gross / fee / net rows depend on it. Letting the taker fill while the
+  // call is in flight (or errored) would silently revert them to the legacy
+  // single-row disclosure and they'd receive `gross − fee` without warning.
+  // In the error phase the primary button is repurposed into "close &
+  // retry" — a preview refetch (e.g. the taker edits the amount, which is
+  // still enabled there) must not dead-lock that escape hatch.
+  const previewBlocking =
+    onSupportedChain &&
+    phase !== "error" &&
+    (previewQuery.isLoading || previewQuery.isError);
   const buttonDisabled =
     isAlreadyDone ||
     !account ||
     !onSupportedChain ||
     !notSelf ||
     !hasMakerPermit ||
+    previewBlocking ||
+    // H-05: invalid / out-of-range / dust fill size blocks Fill (but never
+    // the "close & retry" repurposed button in the error phase).
+    (fillCalc.fillMaker === null && phase !== "error") ||
+    // Taker balance guard: don't let an underfunded taker reach the wallet
+    // popups. Also hold the button while the balance is still loading.
+    ((takerBalanceLoading || insufficientTakerBalance) && phase !== "error") ||
+    // Consent gating: the box must be ticked for every fill. In the
+    // "error" phase the button repurposes itself into "close & retry",
+    // so we don't block that recovery path on the checkbox.
+    (!termsAgreed && phase !== "error") ||
+    // Fat-finger guard: a ≥30% off-market fill needs its own explicit
+    // acknowledgment (same error-phase escape hatch as the terms box).
+    (priceDeviation !== null && !deviationAck && phase !== "error") ||
+    phase === "wrapping-eth" ||
     phase === "awaiting-permit-sig" ||
     phase === "submitting-tx" ||
     phase === "confirming-tx" ||
     signing ||
     writeTx.isPending ||
     writeReceipt.isLoading ||
+    weth.isWrapping ||
     takerStatus.isApproving;
+
+  // Wrap parent close so dismissing the modal always clears consent. The
+  // next time the same (or a different) order opens, the checkbox starts
+  // unticked again.
+  function handleClose() {
+    setTermsAgreed(false);
+    setDeviationAck(false);
+    onClose();
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -423,7 +923,7 @@ export function FillModal({
             {t("trade.fillModal.title")}
           </h2>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="text-fg-faint hover:text-fg text-[20px] leading-none"
             aria-label="close"
           >
@@ -432,7 +932,10 @@ export function FillModal({
         </header>
 
         <div className="p-5 space-y-4 text-[13px]">
-          <Row label={t("trade.fillModal.pair")} value={order.pair} />
+          <Row
+            label={t("trade.fillModal.pair")}
+            value={order.pair.split("/").map(symbolLabel).join(" / ")}
+          />
           <Row
             label={t("trade.fillModal.maker")}
             value={
@@ -450,15 +953,125 @@ export function FillModal({
               </span>
             }
           />
-          <Row
-            label={t("trade.fillModal.youReceive")}
-            value={
-              <span className="font-mono tnum text-buy">
-                {youReceive} {youReceiveSym}
+
+          {/* Fat-finger guard: ≥30% off the market reference. The taker can
+              still fill — far-from-market taking is legitimate — but only
+              after ticking the explicit acknowledgment below. */}
+          {priceDeviation && deviationRef ? (
+            <div className="px-3 py-2.5 rounded-md border border-amber-500/40 bg-amber-500/[0.06] text-[12px] text-amber-300 leading-relaxed">
+              <div>
+                {t(
+                  priceDeviation.above
+                    ? "trade.fillModal.deviationWarnAbove"
+                    : "trade.fillModal.deviationWarnBelow",
+                )
+                  .replace("{pct}", String(priceDeviation.pct))
+                  .replace("{ref}", formatPrice(deviationRef.price))}
+              </div>
+              {!isAlreadyDone && phase !== "error" ? (
+                <label className="mt-2 flex items-start gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={deviationAck}
+                    onChange={(e) => setDeviationAck(e.target.checked)}
+                    className="mt-0.5 accent-amber-400"
+                  />
+                  <span>{t("trade.fillModal.deviationAck")}</span>
+                </label>
+              ) : null}
+            </div>
+          ) : null}
+
+          {/* H-05: taker-side fill amount, in the token the taker receives.
+              Prefilled with the full remaining amount; editable down for a
+              partial fill (the contract has supported this all along). */}
+          <div>
+            <div className="flex items-end justify-between mb-1.5 gap-2">
+              <span className="text-[12px] text-fg-dim">
+                {t("trade.fillModal.fillAmount")}
               </span>
-            }
-            emphasis
-          />
+              <span className="text-[11px] text-fg-faint font-mono">
+                {youReceiveSym}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 px-3 py-2.5 bg-white/[0.02] border border-line rounded-md focus-within:border-line-strong">
+              <input
+                inputMode="decimal"
+                value={fillInput}
+                onChange={(e) => setFillInput(e.target.value)}
+                disabled={isAlreadyDone || (phase !== "idle" && phase !== "error")}
+                className="w-full bg-transparent outline-none text-[15px] font-mono tnum placeholder:text-fg-faint disabled:opacity-50"
+                aria-label={t("trade.fillModal.fillAmount")}
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  setFillInput(formatUnits(remainingMaker, baseDecimals))
+                }
+                disabled={isAlreadyDone || (phase !== "idle" && phase !== "error")}
+                className="shrink-0 px-2 py-1 rounded border border-line text-[11px] text-fg-dim hover:text-fg hover:border-line-strong transition-colors disabled:opacity-50"
+              >
+                {t("trade.fillModal.fillAmountMax")}
+              </button>
+            </div>
+            <div className="mt-1 text-[11px] text-fg-faint">
+              {t("trade.fillModal.partialHint")}
+            </div>
+          </div>
+
+          {fillCalc.error === "range" ? (
+            <Note kind="warn">
+              {t("trade.fillModal.fillAmountRange")
+                .replace("{max}", formatBalance(remainingMaker, baseDecimals))
+                .replace("{symbol}", youReceiveSym)}
+            </Note>
+          ) : null}
+          {fillCalc.error === "tooSmall" ? (
+            <Note kind="warn">{t("trade.fillModal.fillAmountTooSmall")}</Note>
+          ) : null}
+
+          {feeAppliesToTakerReceive ? (
+            <>
+              <Row
+                label={t("trade.fillModal.youReceiveGross")}
+                value={
+                  <span className="font-mono tnum text-fg-dim">
+                    {youReceive} {youReceiveSym}
+                  </span>
+                }
+              />
+              <Row
+                label={t("trade.fillModal.protocolFee").replace(
+                  "{bps}",
+                  feeBpsDisplay,
+                )}
+                value={
+                  <span className="font-mono tnum text-fg-dim">
+                    −{youReceiveFee} {youReceiveSym}
+                  </span>
+                }
+              />
+              <Row
+                label={t("trade.fillModal.youReceiveNet")}
+                value={
+                  <span className="font-mono tnum text-buy">
+                    {youReceiveNet} {youReceiveSym}
+                  </span>
+                }
+                emphasis
+              />
+            </>
+          ) : (
+            <Row
+              label={t("trade.fillModal.youReceive")}
+              value={
+                <span className="font-mono tnum text-buy">
+                  {youReceive} {youReceiveSym}
+                </span>
+              }
+              emphasis
+            />
+          )}
           <Row
             label={t("trade.fillModal.youPay")}
             value={
@@ -486,6 +1099,20 @@ export function FillModal({
           {!onSupportedChain ? (
             <Note kind="warn">{t("trade.fillModal.switchNetwork")}</Note>
           ) : null}
+          {insufficientTakerBalance ? (
+            <Note kind="error">
+              {t("trade.fillModal.insufficientTakerBalance")
+                .replaceAll("{symbol}", youPaySym)
+                .replace(
+                  "{balance}",
+                  formatBalance(takerSpendable, quoteDecimals),
+                )
+                .replace("{needed}", youPay)}
+            </Note>
+          ) : null}
+          {onSupportedChain && previewQuery.isError ? (
+            <Note kind="error">{t("trade.fillModal.previewFeeError")}</Note>
+          ) : null}
 
           {error ? <Note kind="error">{error}</Note> : null}
           {phase === "done" ? (
@@ -501,9 +1128,21 @@ export function FillModal({
             <Note kind="warn">{t("trade.fillModal.walletPopupHint")}</Note>
           ) : null}
 
+          {!isAlreadyDone && phase !== "error" ? (
+            <TermsConsentCheckbox
+              checked={termsAgreed}
+              onChange={setTermsAgreed}
+            />
+          ) : null}
+
           <button
             onClick={buttonAction}
             disabled={buttonDisabled}
+            title={
+              !termsAgreed && phase !== "error" && !isAlreadyDone
+                ? t("terms.consent.required")
+                : undefined
+            }
             className="w-full mt-2 py-3 rounded-md bg-accent text-bg font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {buttonLabel}
@@ -580,14 +1219,91 @@ function formatBalance(raw: bigint, decimals: number): string {
   const fracRaw = raw % 10n ** BigInt(decimals);
   const wholeStr = whole.toLocaleString("en-US");
   if (fracRaw === 0n) return wholeStr;
-  const fracPadded = fracRaw.toString().padStart(decimals, "0").slice(0, 6);
+  // Sub-1 values get 12 fraction digits (same D-05 rule as PlaceOrder's
+  // fmtNum) so dust-priced WETH legs don't round away to "0".
+  const maxFrac = whole === 0n ? 12 : 6;
+  const fracPadded = fracRaw.toString().padStart(decimals, "0").slice(0, maxFrac);
   const fracTrimmed = fracPadded.replace(/0+$/, "");
   return fracTrimmed.length === 0 ? wholeStr : `${wholeStr}.${fracTrimmed}`;
 }
 
-// Silence "unused" lint for the empty-permit constants — kept exported in
-// permit2.ts for future legacy-order paths but referenced here for the
-// pattern they document.
-void EMPTY_PERMIT_SINGLE;
+/**
+ * H-05 partial fill: parse the taker's fill-size input (makerToken units,
+ * comma / space tolerant per D-02) and compute the exact takerToken payment
+ * by mirroring ScentDexV6._proportionalTakerAmount:
+ *   - final fill (fillMaker == remaining): pays the exact remaining taker
+ *     quota (takerAmount − filledTakerAmount)
+ *   - partial fill: ceil(fillMaker × takerAmount / makerAmount), capped at
+ *     the remaining quota (rounds in the maker's favour — matches on-chain)
+ * The permit amount and the preview both use this value, so what the taker
+ * signs is exactly what the contract pulls.
+ */
+function computeFill(
+  order: FillOrder | null,
+  fillInput: string,
+  makerDecimals: number,
+): {
+  fillMaker: bigint | null;
+  fillTaker: bigint | null;
+  error: "range" | "tooSmall" | null;
+} {
+  if (!order) return { fillMaker: null, fillTaker: null, error: null };
+  const makerAmount = BigInt(order.order.makerAmount);
+  const takerAmount = BigInt(order.order.takerAmount);
+  const filledMaker = BigInt(order.filledMakerAmount);
+  const filledTaker = BigInt(order.filledTakerAmount);
+  const remainingMaker =
+    makerAmount > filledMaker ? makerAmount - filledMaker : 0n;
+  if (remainingMaker === 0n || makerAmount === 0n)
+    return { fillMaker: null, fillTaker: null, error: null };
+
+  const cleaned = fillInput.replace(/[,\s]/g, "");
+  // Audit C-L3: viem's parseUnits ROUNDS excess fraction digits (e.g.
+  // "1.0000005" at 6 decimals → 1000001), so the user would sign for an
+  // amount that differs from what they typed. Reject instead of rounding.
+  const frac = cleaned.split(".")[1];
+  if (frac !== undefined && frac.length > makerDecimals)
+    return { fillMaker: null, fillTaker: null, error: "range" };
+  let parsed: bigint;
+  try {
+    parsed = parseUnits(cleaned, makerDecimals);
+  } catch {
+    return { fillMaker: null, fillTaker: null, error: "range" };
+  }
+  if (parsed <= 0n || parsed > remainingMaker)
+    return { fillMaker: null, fillTaker: null, error: "range" };
+
+  const fillTaker = proportionalTakerAmount(
+    parsed,
+    makerAmount,
+    takerAmount,
+    filledMaker,
+    filledTaker,
+  );
+  // The contract reverts ZeroResidualTaker on a zero payment leg — surface
+  // it as "amount too small" before the taker burns gas discovering it.
+  if (fillTaker === 0n)
+    return { fillMaker: null, fillTaker: null, error: "tooSmall" };
+
+  return { fillMaker: parsed, fillTaker, error: null };
+}
+
+/** Wei-exact mirror of ScentDexV6._proportionalTakerAmount (r6). */
+function proportionalTakerAmount(
+  fillMaker: bigint,
+  makerAmount: bigint,
+  takerAmount: bigint,
+  filledMaker: bigint,
+  filledTaker: bigint,
+): bigint {
+  const remainingTakerQuota =
+    takerAmount > filledTaker ? takerAmount - filledTaker : 0n;
+  if (filledMaker + fillMaker === makerAmount) return remainingTakerQuota;
+  const rawCeil = (fillMaker * takerAmount + makerAmount - 1n) / makerAmount;
+  return rawCeil > remainingTakerQuota ? remainingTakerQuota : rawCeil;
+}
+
+// Silence "unused" lint for the empty-permit constants still imported for
+// symmetry but not referenced directly here.
 void EMPTY_PERMIT_SIGNATURE;
 void serialisePermitSingle;

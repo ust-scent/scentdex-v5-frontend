@@ -42,8 +42,12 @@ export async function GET(req: NextRequest) {
   const pair = url.searchParams.get("pair") ?? undefined;
   const chainParam = url.searchParams.get("chainId");
   const chainId = chainParam ? Number(chainParam) : undefined;
+  // `?includeHidden=true` exposes keeper-bot-flagged rows for admin /
+  // debug surfaces. Default omits them so the public board stays clean.
+  const includeKeeperHidden =
+    url.searchParams.get("includeHidden") === "true";
 
-  const orders = await listOrders({ pair, chainId });
+  const orders = await listOrders({ pair, chainId, includeKeeperHidden });
   return NextResponse.json({ orders, count: orders.length });
 }
 

@@ -51,8 +51,11 @@ function rpcClientFor(chainId: number) {
     return createPublicClient({ chain: sepolia, transport: http(url) });
   }
   if (chainId === 1) {
-    const url = process.env.MAINNET_RPC_URL;
-    if (!url) return null;
+    // Symmetric with Sepolia: fall back to a public node so a missing env var
+    // does not silently break the post-fill off-chain mirror (which causes
+    // filled orders to linger on the board and not appear in History).
+    const url =
+      process.env.MAINNET_RPC_URL || "https://ethereum-rpc.publicnode.com";
     return createPublicClient({ chain: mainnet, transport: http(url) });
   }
   return null;

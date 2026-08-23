@@ -4,6 +4,7 @@ import {
   SignConfirmModal,
   type SignConfirmContext,
 } from "@/app/components/SignConfirmModal";
+import { TermsConsentCheckbox } from "@/app/components/TermsConsentCheckbox";
 import { useTranslator } from "@/lib/locale-context";
 import { SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
 import { useTokenStatus } from "@/lib/hooks/useTokenStatus";
@@ -22,15 +23,27 @@ import {
   serialisePermitSingle,
   type PermitSingle,
 } from "@/lib/permit2";
+import { useBestPrices } from "@/lib/hooks/useBestPrices";
+import {
+  readWalletChainId,
+  targetChainForPath,
+  useIsWrongNetwork,
+} from "@/lib/hooks/useNetworkGuard";
+import { usePathname } from "next/navigation";
 import { useFillEvents } from "@/lib/hooks/useFillEvents";
-import { TOKENS, feeConfig, type Pair, type Token } from "@/lib/tokens";
+import { formatPrice } from "@/lib/format-price";
+import { deviationWarning, referencePrice } from "@/lib/price-deviation";
+import { useWeth } from "@/lib/hooks/useWeth";
+import { TOKENS, feeConfig, symbolLabel, type Pair, type Token } from "@/lib/tokens";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { formatUnits, type Hex } from "viem";
+import { formatUnits, parseUnits, type Hex } from "viem";
 import {
   useAccount,
+  useBalance,
   useChainId,
   usePublicClient,
   useSignTypedData,
+  useSwitchChain,
 } from "wagmi";
 
 import { PERMIT2_ABI } from "@/lib/abi";
@@ -57,6 +70,9 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
 
   const { address: account, isConnected } = useAccount();
   const chainId = useChainId();
+  const isWrongNetwork = useIsWrongNetwork();
+  const { switchChain } = useSwitchChain();
+  const pathname = usePathname();
   const dexAddress = SCENTDEX_V5_ADDRESS[chainId];
   // Direct viem client. Needed to read Permit2.allowance(maker, makerToken,
   // DEX).nonce SYNCHRONOUSLY at sign time so we never embed a stale nonce
@@ -75,6 +91,26 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
   const makerToken = side === "sell" ? baseToken : quoteToken;
   const makerStatus = useTokenStatus(makerToken);
 
+  // Auto-wrap (SDT/WETH test market): when the maker pays in WETH, the user
+  // thinks in ETH — if their WETH balance can't cover the order we wrap the
+  // shortfall via WETH9.deposit() as an extra leading tx, then continue the
+  // normal approve→sign chain. Inert on every non-WETH pair (and WETH has no
+  // mainnet address, so mainnet behaviour is untouched).
+  const weth = useWeth();
+  const isWethMaker = Boolean(makerToken.wrapsNative);
+  const neededMakerAmount = useMemo(() => {
+    if (!isWethMaker) return 0n;
+    try {
+      return parseUnits((size || "0") as `${number}`, makerToken.decimals);
+    } catch {
+      return 0n;
+    }
+  }, [isWethMaker, size, makerToken.decimals]);
+  const wethShortfall = isWethMaker ? weth.shortfallFor(neededMakerAmount) : 0n;
+  // True between the wrap click and its receipt; the effect below advances
+  // to approve/sign exactly once.
+  const awaitingWrap = useRef(false);
+
   // Live price hint from on-chain OrderFilled events (round-2). Used as
   // the placeholder in the unit price input so the user has a sane anchor
   // when they don't know what number to type.
@@ -87,6 +123,10 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
   const [lastResult, setLastResult] = useState<
     { ok: true; signature: string; orderHash?: string } | { ok: false; error: string } | null
   >(null);
+  // Per-order click-wrap consent. Reset to `false` after every submit
+  // attempt (success or failure) so the maker must re-tick the box for
+  // each new order — i.e. the user re-affirms the Terms every time.
+  const [termsAgreed, setTermsAgreed] = useState(false);
 
   // True between the moment the user clicks "Sign Order" and the modal opens.
   // While set, the auto-approve flow is gating: as soon as the maker token's
@@ -98,8 +138,10 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
   // -- Form-derived totals ---------------------------------------------
   const cfg = feeConfig(pair, chainId);
   const totals = useMemo(() => {
-    const sizeN = Number(size);
-    const priceN = Number(unitPrice);
+    // Comma / space tolerant: "1,000,000" would otherwise Number() to NaN and
+    // collapse the whole receipt preview to 0.00 (tester D-02).
+    const sizeN = Number(size.replace(/[,\s]/g, ""));
+    const priceN = Number(unitPrice.replace(/[,\s]/g, ""));
     if (
       !Number.isFinite(sizeN) ||
       !Number.isFinite(priceN) ||
@@ -111,8 +153,9 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
         fee: 0,
         net: 0,
         derivedReceive: 0,
-        derivedReceiveSymbol:
+        derivedReceiveSymbol: symbolLabel(
           side === "sell" ? quoteToken.symbol : baseToken.symbol,
+        ),
       };
     }
 
@@ -123,11 +166,11 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
     let grossInQuote: number;
     if (side === "sell") {
       derivedReceive = sizeN * priceN;
-      derivedReceiveSymbol = quoteToken.symbol;
+      derivedReceiveSymbol = symbolLabel(quoteToken.symbol);
       grossInQuote = derivedReceive;
     } else {
       derivedReceive = sizeN / priceN;
-      derivedReceiveSymbol = baseToken.symbol;
+      derivedReceiveSymbol = symbolLabel(baseToken.symbol);
       grossInQuote = sizeN; // budget IS the gross quote amount
     }
 
@@ -149,10 +192,28 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
     };
   }, [size, unitPrice, side, cfg.feeBps, cfg.feeSide, pair.base, pair.quote, baseToken.symbol, quoteToken.symbol]);
 
+  // Pre-build the order (bigint-exact) so the form can validate before sign:
+  //  - null when inputs are empty/invalid, OR when the amounts round to 0
+  //    (dust order) — buildAmounts returns null for a zero maker/taker amount.
+  //  - the maker-token amount the order actually spends (for the balance gate).
+  const builtOrder = useMemo(() => {
+    const sizeN = Number(size);
+    const priceN = Number(unitPrice);
+    if (!Number.isFinite(sizeN) || !Number.isFinite(priceN) || sizeN <= 0 || priceN <= 0)
+      return null;
+    return buildAmounts({ side, base: baseToken, quote: quoteToken, size, unitPrice, chainId });
+  }, [side, size, unitPrice, chainId, baseToken, quoteToken]);
+  const makerNeeded = builtOrder?.makerAmount ?? 0n;
+
   // -- Reasons we can't sign yet ---------------------------------------
   const reasons: string[] = [];
   if (!isConnected) reasons.push(t("trade.placeOrder.connectWallet"));
-  if (!dexAddress) reasons.push(t("trade.placeOrder.wrongNetwork"));
+  // Wrong-network gate keyed off the wallet's REAL chain (useIsWrongNetwork),
+  // not useChainId() — on a single-chain prod config useChainId is clamped to
+  // mainnet even when the wallet is on Polygon, which let orders be signed
+  // from the wrong network (tester E-04).
+  if (isConnected && isWrongNetwork) reasons.push(t("trade.placeOrder.wrongNetwork"));
+  else if (!dexAddress) reasons.push(t("trade.placeOrder.wrongNetwork"));
   if (
     dexAddress &&
     (!baseToken.addresses[chainId] || !quoteToken.addresses[chainId])
@@ -162,7 +223,57 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
     reasons.push(t("trade.placeOrder.enterPrice"));
   if (!size || Number(size) <= 0)
     reasons.push(t("trade.placeOrder.enterAmount"));
+  // Amount-too-small: valid positive inputs but the order rounds to a zero
+  // maker/taker amount (dust, e.g. 1e-20 SDT). Would be a degenerate order.
+  else if (unitPrice && Number(unitPrice) > 0 && builtOrder === null)
+    reasons.push(t("trade.placeOrder.amountTooSmall"));
+  // Balance gate. WETH maker side counts WETH + wrappable ETH (auto-wrap);
+  // every other maker token gates on the plain token balance so a maker
+  // cannot sign an order for more than they hold (fails at fill otherwise).
+  if (isWethMaker) {
+    if (neededMakerAmount > 0n && neededMakerAmount > weth.spendable)
+      reasons.push(t("trade.placeOrder.insufficientEthWeth"));
+  } else if (makerNeeded > 0n && makerNeeded > makerStatus.balance) {
+    reasons.push(t("trade.placeOrder.insufficientBalance"));
+  }
   const canSign = reasons.length === 0;
+
+  const book = useBestPrices(pair);
+
+  // Fat-finger guard (2026-08-11): warn when the entered unit price is ≥30%
+  // away from the market reference (last trade → book mid → single resting
+  // side; see lib/price-deviation.ts). Replaces the earlier 20x/0.05x
+  // last-trade heuristic (E-07/E-10) with a much tighter 30% band. The
+  // inline banner never disables signing — the maker may legitimately post
+  // far from market — but the sign modal turns the same condition into a
+  // failing check, so pushing a wild price through requires the explicit
+  // hold-to-sign override.
+  const priceRef = referencePrice(
+    stats.latestPrice,
+    book.bestBid,
+    book.bestAsk,
+  );
+  const priceDeviation = (() => {
+    const p = Number(unitPrice.replace(/[,\s]/g, ""));
+    if (!priceRef || !Number.isFinite(p) || p <= 0) return null;
+    return deviationWarning(p, priceRef.price);
+  })();
+
+  // Non-blocking warning (E-10 strict): the entered price crosses the live
+  // book — a buy at/above the best ask, or a sell at/below the best bid.
+  // Complements the deviation band above with the actual resting orders, so
+  // a maker who is about to be instantly filled at their own price sees it
+  // BEFORE signing. Never disables signing: crossing on purpose is a
+  // legitimate way to take liquidity on a signed-order DEX.
+  const crossesBook = (() => {
+    const p = Number(unitPrice.replace(/[,\s]/g, ""));
+    if (!Number.isFinite(p) || p <= 0) return null;
+    if (side === "buy" && book.bestAsk !== null && p >= book.bestAsk)
+      return { key: "trade.placeOrder.crossesBookBuy" as const, at: book.bestAsk };
+    if (side === "sell" && book.bestBid !== null && p <= book.bestBid)
+      return { key: "trade.placeOrder.crossesBookSell" as const, at: book.bestBid };
+    return null;
+  })();
 
   function proceedToModal() {
     if (!account || !dexAddress) return;
@@ -222,8 +333,62 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [makerStatus.isFullyApproved]);
 
-  function startSign() {
+  // Effect: auto-advance after the auto-wrap deposit confirms — continue the
+  // same chain a plain startSign() click would have taken (approve if the
+  // Permit2 leg is missing, otherwise straight to the sign modal).
+  useEffect(() => {
+    if (!awaitingWrap.current) return;
+    if (!weth.isWrapConfirmed) return;
+    awaitingWrap.current = false;
+    void makerStatus.refetchBalance();
+    if (!makerStatus.isErc20Approved) {
+      awaitingApproval.current = true;
+      makerStatus.approve();
+      return;
+    }
+    proceedToModal();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weth.isWrapConfirmed]);
+
+  // Effect: surface a wrap failure (user reject / RPC error) instead of
+  // leaving the button stuck in the wrapping state.
+  useEffect(() => {
+    if (!weth.wrapError || !awaitingWrap.current) return;
+    awaitingWrap.current = false;
+    const msg =
+      weth.wrapError instanceof Error
+        ? weth.wrapError.message
+        : String(weth.wrapError);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLastResult({ ok: false, error: msg.slice(0, 160) });
+    weth.resetWrap();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weth.wrapError]);
+
+  async function startSign() {
     if (!canSign || !account || !dexAddress) return;
+
+    // Hard wrong-network gate, re-read from the wallet provider at click time
+    // (not the reactive hook, which can lag or be clamped). Even if the
+    // button somehow enabled on the wrong chain, we never emit a signature
+    // request for a mainnet order while the wallet is elsewhere — we bounce
+    // it to the target chain instead (tester E-04).
+    const targetChain = targetChainForPath(pathname);
+    const liveChain = await readWalletChainId();
+    if (liveChain !== undefined && liveChain !== targetChain) {
+      setLastResult({ ok: false, error: t("trade.placeOrder.wrongNetwork") });
+      switchChain({ chainId: targetChain });
+      return;
+    }
+
+    // Auto-wrap leg (WETH maker side only): top the WETH balance up to the
+    // order size from native ETH before anything else. The effect above
+    // resumes the approve/sign chain once the deposit confirms.
+    if (isWethMaker && wethShortfall > 0n) {
+      awaitingWrap.current = true;
+      weth.wrap(wethShortfall);
+      return;
+    }
 
     // If the wallet → Permit2 leg isn't approved yet, fire that one
     // on-chain transaction first. The effect above watches for it and
@@ -241,6 +406,17 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
 
   async function confirmSign() {
     if (!pendingOrder || !dexAddress) return;
+
+    // Re-verify the wallet chain at the final signing step too — the user may
+    // have switched networks after the confirm modal opened (tester E-04).
+    const targetChain = targetChainForPath(pathname);
+    const liveChain = await readWalletChainId();
+    if (liveChain !== undefined && liveChain !== targetChain) {
+      setLastResult({ ok: false, error: t("trade.placeOrder.wrongNetwork") });
+      setModalOpen(false);
+      switchChain({ chainId: targetChain });
+      return;
+    }
 
     // Why two signatures and not one:
     //
@@ -362,9 +538,11 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
       setModalOpen(false);
       setSize("");
       setUnitPrice("");
+      setTermsAgreed(false);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setLastResult({ ok: false, error: msg.slice(0, 160) });
+      setTermsAgreed(false);
     }
   }
 
@@ -380,6 +558,14 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
           // Phase 3.4: read these from the contract.
           minTakerAmount: undefined,
           maxPriceRatio: undefined,
+          // Fat-finger guard: undefined = no market reference existed (the
+          // modal omits the check row); null = checked and within ±30%;
+          // object = ≥30% off, the check fails → hold-to-sign override.
+          priceDeviation: priceRef
+            ? priceDeviation
+              ? { ...priceDeviation, refPrice: priceRef.price }
+              : null
+            : undefined,
         }
       : null;
 
@@ -410,7 +596,7 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
                 : "bg-white/[0.03] text-fg-dim hover:text-fg"
             }`}
           >
-            {t("trade.placeOrder.buy").replace("{base}", pair.base)}
+            {t("trade.placeOrder.buy").replace("{base}", symbolLabel(pair.base))}
           </button>
           <button
             onClick={() => setSide("sell")}
@@ -420,7 +606,7 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
                 : "bg-white/[0.03] text-fg-dim hover:text-fg"
             }`}
           >
-            {t("trade.placeOrder.sell").replace("{base}", pair.base)}
+            {t("trade.placeOrder.sell").replace("{base}", symbolLabel(pair.base))}
           </button>
         </div>
 
@@ -434,26 +620,46 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
          */}
         <SizeField
           side={side}
-          baseSymbol={pair.base}
-          quoteSymbol={pair.quote}
+          baseSymbol={symbolLabel(pair.base)}
+          quoteSymbol={symbolLabel(pair.quote)}
           value={size}
-          onChange={setSize}
+          onChange={(v) => { setSize(v); if (lastResult) setLastResult(null); }}
         />
 
         <PercentButtons
-          balance={makerStatus.balance}
+          // WETH maker side: the % base is WETH + wrappable ETH (minus a gas
+          // buffer) since auto-wrap tops the difference up at sign time.
+          balance={isWethMaker ? weth.spendable : makerStatus.balance}
           decimals={makerToken.decimals}
-          onPick={(v) => setSize(v)}
+          onPick={(v) => { setSize(v); if (lastResult) setLastResult(null); }}
         />
 
         <PriceField
           side={side}
-          baseSymbol={pair.base}
-          quoteSymbol={pair.quote}
+          baseSymbol={symbolLabel(pair.base)}
+          quoteSymbol={symbolLabel(pair.quote)}
           value={unitPrice}
-          onChange={setUnitPrice}
+          onChange={(v) => { setUnitPrice(v); if (lastResult) setLastResult(null); }}
           marketPriceHint={stats.latestPrice}
         />
+
+        {priceDeviation && priceRef ? (
+          <div className="mt-1 px-3 py-2 rounded-md border border-amber-500/40 bg-amber-500/[0.06] text-[11px] text-amber-300 leading-relaxed">
+            {t(
+              priceDeviation.above
+                ? "trade.placeOrder.priceDeviationAbove"
+                : "trade.placeOrder.priceDeviationBelow",
+            )
+              .replace("{pct}", String(priceDeviation.pct))
+              .replace("{ref}", formatPrice(priceRef.price))}
+          </div>
+        ) : null}
+
+        {crossesBook ? (
+          <div className="mt-1 px-3 py-2 rounded-md border border-amber-500/40 bg-amber-500/[0.06] text-[11px] text-amber-300 leading-relaxed">
+            {t(crossesBook.key).replace("{price}", formatPrice(crossesBook.at))}
+          </div>
+        ) : null}
 
         {/*
          * Receipt preview: derived from size + unit price. Sells produce
@@ -464,8 +670,8 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
           <Row
             k={
               side === "sell"
-                ? t("trade.placeOrder.grossSell").replace("{symbol}", pair.quote)
-                : t("trade.placeOrder.grossBuy").replace("{symbol}", pair.base)
+                ? t("trade.placeOrder.grossSell").replace("{symbol}", symbolLabel(pair.quote))
+                : t("trade.placeOrder.grossBuy").replace("{symbol}", symbolLabel(pair.base))
             }
             v={`${fmtNum(totals.derivedReceive)} ${totals.derivedReceiveSymbol}`}
           />
@@ -486,6 +692,32 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
             dim
           />
         </div>
+        {/* V6 Case B disclosure for the maker side. When the maker isn't the
+             feeSide-seller (e.g. maker buys SCENT with feeSide=SCENT), the
+             contract still charges 10% — but on the *taker's* receive of the
+             quote currency, not the maker's. The maker's totals shown above
+             remain correct (no fee on their side); this note tells the maker
+             how the symmetric fee will manifest when a taker fills the order
+             by selling the feeSide token. Without this, a maker posting a
+             SCENT-buy order would assume "no fee" applies anywhere. */}
+        {(side === "sell" ? cfg.feeSide === pair.quote : cfg.feeSide === pair.base) ? (
+          <div className="mt-2 px-3 py-2 rounded-md border border-amber-500/30 bg-amber-500/[0.05] text-[11px] text-amber-300 leading-relaxed">
+            {t("trade.placeOrder.caseBTakerNote")
+              .replace("{feeSide}", symbolLabel(cfg.feeSide === pair.base ? pair.base : pair.quote))
+              // {quote} = the currency the taker actually receives (i.e. the
+              // maker's makerToken in this fill). For a sell-side maker order
+              // this is pair.base; for a buy-side maker order this is pair.quote.
+              .replace("{quote}", symbolLabel(side === "sell" ? pair.base : pair.quote))
+              // {makerToken} = the token the maker pays out (= maker's makerToken).
+              .replace("{makerToken}", symbolLabel(side === "sell" ? pair.base : pair.quote))
+              .replace(
+                "{bps}",
+                (cfg.feeBps / 100).toLocaleString("en-US", {
+                  maximumFractionDigits: 2,
+                }),
+              )}
+          </div>
+        ) : null}
 
         <ExpiryRow
           choice={expiry}
@@ -533,7 +765,7 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
           )
         ) : null}
 
-        {signing || makerStatus.isApproving ? (
+        {signing || makerStatus.isApproving || weth.isWrapping ? (
           <div
             role="status"
             aria-live="polite"
@@ -543,25 +775,42 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
           </div>
         ) : null}
 
+        <TermsConsentCheckbox
+          checked={termsAgreed}
+          onChange={setTermsAgreed}
+        />
+
         <button
           onClick={startSign}
-          disabled={!canSign || signing || makerStatus.isApproving}
+          disabled={
+            !canSign ||
+            !termsAgreed ||
+            signing ||
+            makerStatus.isApproving ||
+            weth.isWrapping
+          }
           className="mt-2 w-full py-3 rounded-md bg-accent text-bg font-medium disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-          title={reasons.join(" · ")}
+          title={
+            !termsAgreed && canSign
+              ? t("terms.consent.required")
+              : reasons.join(" · ")
+          }
         >
           {!canSign
             ? reasons[0]
+            : weth.isWrapping
+            ? t("trade.placeOrder.wrappingEth")
             : makerStatus.approveStep === "approving"
             ? t("trade.placeOrder.approvingErc20").replace(
                 "{symbol}",
-                makerToken.symbol,
+                symbolLabel(makerToken.symbol),
               )
             : signing
             ? t("trade.placeOrder.waitingForWallet")
             : !makerStatus.isErc20Approved
             ? t("trade.placeOrder.approveAndSign").replace(
                 "{symbol}",
-                makerToken.symbol,
+                symbolLabel(makerToken.symbol),
               )
             : t("trade.placeOrder.signOrder")}
         </button>
@@ -815,7 +1064,12 @@ function Row({
 
 function fmtNum(n: number): string {
   if (!Number.isFinite(n) || n === 0) return "0.00";
-  return n.toLocaleString("en-US", { maximumFractionDigits: 6 });
+  // Dust-priced pairs (1 SDT = 0.000005 WETH) produce sub-1 receive/fee
+  // values that six fraction digits round away (tester D-05: 0.00061728 ->
+  // 0.000617). Give small magnitudes more precision; large values keep it
+  // tight (toLocaleString drops trailing zeros so "4.5"/"5" are unaffected).
+  const maxFrac = Math.abs(n) < 1 ? 12 : 6;
+  return n.toLocaleString("en-US", { maximumFractionDigits: maxFrac });
 }
 
 function BalanceStrip({
@@ -849,8 +1103,35 @@ function BalanceStrip({
         <div className="grid grid-cols-2 gap-x-6 gap-y-1">
           <BalanceCell token={baseToken} />
           <BalanceCell token={quoteToken} />
+          {(baseToken.wrapsNative || quoteToken.wrapsNative) &&
+          onSupportedChain ? (
+            <NativeBalanceCell />
+          ) : null}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Native ETH balance, shown alongside the WETH cell on wrapped-native pairs.
+ * WETH and ETH are 1:1 equivalents, so a user holding only unwrapped ETH
+ * would otherwise see "WETH 0" and assume they can't trade. Display-only:
+ * order sizing / validation still count WETH exclusively. Balance figure
+ * only — no wrap-hint copy (Alex 2026-07-24: users don't think in
+ * wrapped/unwrapped terms).
+ */
+function NativeBalanceCell() {
+  const { address } = useAccount();
+  const { data, isLoading } = useBalance({ address });
+  return (
+    <div className="flex flex-col gap-0.5 min-w-0">
+      <span className="text-[10px] uppercase tracking-[0.14em] text-fg-faint">
+        ETH
+      </span>
+      <span className="font-mono tnum text-[14px] text-fg truncate">
+        {isLoading || !data ? "…" : formatBalance(data.value, data.decimals)}
+      </span>
     </div>
   );
 }
@@ -867,7 +1148,7 @@ function BalanceCell({ token }: { token: Token }) {
   return (
     <div className="flex flex-col gap-0.5 min-w-0">
       <span className="text-[10px] uppercase tracking-[0.14em] text-fg-faint">
-        {token.symbol}
+        {symbolLabel(token.symbol)}
       </span>
       <span className="font-mono tnum text-[14px] text-fg truncate">
         {display}

@@ -176,18 +176,26 @@ export type Dictionary = {
   "trade.orderBook.hiddenTooltip": string;
   "trade.orderBook.hidden": string;
   "trade.orderBook.spread": string;
+  "trade.orderBook.mid": string;
   "trade.orderBook.statusLoading": string;
   "trade.orderBook.statusEmpty": string;
   "trade.orderBook.statusAggregated": string;
+  "trade.orderBook.cancellerWarnPct": string;
+  "trade.orderBook.cancellerWarnOften": string;
+  "trade.orderBook.askDepth": string;
+  "trade.orderBook.bidDepth": string;
+  "trade.orderBook.depthTooltip": string;
 
   // Trade page — PlaceOrder
   "trade.placeOrder.title": string;
+  // /sdttest ETH↔WETH explainer + faucet/unwrap buttons
   "trade.placeOrder.price": string;
   "trade.placeOrder.amount": string;
   "trade.placeOrder.expires": string;
   "trade.placeOrder.total": string;
   "trade.placeOrder.youReceive": string;
   "trade.placeOrder.makerFee": string;
+  "trade.placeOrder.caseBTakerNote": string;
   // Round-5 conversational labels
   "trade.placeOrder.sizeSellQuestion": string;
   "trade.placeOrder.sizeBuyQuestion": string;
@@ -218,6 +226,14 @@ export type Dictionary = {
   "trade.placeOrder.approvingStep1": string;
   "trade.placeOrder.approvingStep2": string;
   "trade.placeOrder.approvingErc20": string;
+  "trade.placeOrder.wrappingEth": string;
+  "trade.placeOrder.insufficientEthWeth": string;
+  "trade.placeOrder.insufficientBalance": string;
+  "trade.placeOrder.amountTooSmall": string;
+  "trade.placeOrder.priceDeviationAbove": string;
+  "trade.placeOrder.priceDeviationBelow": string;
+  "trade.placeOrder.crossesBookBuy": string;
+  "trade.placeOrder.crossesBookSell": string;
   "trade.placeOrder.orderSigned": string;
   "trade.placeOrder.orderPosted": string;
   "trade.placeOrder.orderPlacedHeader": string;
@@ -232,6 +248,8 @@ export type Dictionary = {
   "trade.recentTrades.syncing": string;
   "trade.recentTrades.loading": string;
   "trade.recentTrades.empty": string;
+  /** `{explorer}` is substituted with the chain's explorer name. */
+  "trade.recentTrades.viewTx": string;
 
   // Trade page — StandingAllowanceBanner (round-2 → round-3 cleanup)
   "trade.standingAllowance.headline": string;
@@ -268,6 +286,10 @@ export type Dictionary = {
   "trade.signModal.ruleFloorFail": string;
   "trade.signModal.ruleRatioOk": string;
   "trade.signModal.ruleRatioFail": string;
+  "trade.signModal.ruleDeviationOk": string;
+  "trade.signModal.ruleDeviationFailAbove": string;
+  "trade.signModal.ruleDeviationFailBelow": string;
+  "trade.signModal.ruleDeviationDetail": string;
 
   // Trade page — StatsBar
   "trade.statsBar.volume24h": string;
@@ -275,6 +297,14 @@ export type Dictionary = {
   "trade.statsBar.low24h": string;
   "trade.statsBar.makerFee": string;
   "trade.statsBar.makerFeeSuffix": string;
+  "trade.statsBar.lastPrice": string;
+  /** `{symbol}` is substituted with the base token's display symbol. */
+  "trade.statsBar.issuerLinks": string;
+  "trade.statsBar.website": string;
+
+  // Trade page — order book crossed-state copy
+  "trade.orderbook.crossedWarning": string;
+  "trade.orderbook.crossed": string;
 
   // Trade page — FillModal error messages (V5 custom error mapping)
   "trade.fillError.title": string;
@@ -312,14 +342,27 @@ export type Dictionary = {
   "trade.fillModal.maker": string;
   "trade.fillModal.price": string;
   "trade.fillModal.youReceive": string;
+  "trade.fillModal.youReceiveGross": string;
+  "trade.fillModal.youReceiveNet": string;
+  "trade.fillModal.protocolFee": string;
   "trade.fillModal.youPay": string;
+  "trade.fillModal.fillAmount": string;
+  "trade.fillModal.fillAmountMax": string;
+  "trade.fillModal.fillAmountRange": string;
+  "trade.fillModal.fillAmountTooSmall": string;
+  "trade.fillModal.partialHint": string;
+  "trade.fillModal.deviationWarnAbove": string;
+  "trade.fillModal.deviationWarnBelow": string;
+  "trade.fillModal.deviationAck": string;
   "trade.fillModal.orderStatus": string;
   "trade.fillModal.cantFillOwn": string;
   "trade.fillModal.missingPermit": string;
   "trade.fillModal.switchNetwork": string;
+  "trade.fillModal.insufficientTakerBalance": string;
   "trade.fillModal.settled": string;
   "trade.fillModal.button.filled": string;
   "trade.fillModal.button.approving": string;
+  "trade.fillModal.button.wrappingEth": string;
   "trade.fillModal.button.signPermit": string;
   "trade.fillModal.button.waitingWallet": string;
   "trade.fillModal.button.confirmingTx": string;
@@ -332,6 +375,60 @@ export type Dictionary = {
   "trade.fillModal.statusCancelled": string;
   "trade.fillModal.statusExpired": string;
   "trade.fillModal.walletPopupHint": string;
+  "trade.fillModal.previewFeeError": string;
+
+  // Footer
+  "footer.terms": string;
+  "footer.privacy": string;
+  "footer.contact": string;
+  "footer.copyright": string;
+
+  // Legal documents (Terms / Privacy)
+  "legal.translation.notice": string;
+
+  // Per-order click-wrap consent (PlaceOrder / FillModal)
+  "terms.consent.prefix": string;
+  "terms.consent.termsLink": string;
+  "terms.consent.privacyLink": string;
+  "terms.consent.joiner": string;
+  "terms.consent.suffix": string;
+  "terms.consent.required": string;
+
+  // Cookie banner
+  "cookie.banner.body": string;
+  "cookie.banner.accept": string;
+  "cookie.banner.rejectNonEssential": string;
+  "cookie.banner.learnMore": string;
+
+  // Onboarding banner (above OrderBook on /trade)
+  "onboarding.banner.text": string;
+  "onboarding.banner.cta": string;
+  "onboarding.banner.dismissAria": string;
+
+  // Active Offers section (below OrderBook on /trade)
+  "activeOffers.heading": string;
+  "activeOffers.subtext": string;
+  "activeOffers.badge.sell": string;
+  "activeOffers.badge.buy": string;
+  "activeOffers.label.maker": string;
+  "activeOffers.label.filled": string;
+  "activeOffers.label.ago_just_now": string;
+  "activeOffers.label.ago_minutes": string;
+  "activeOffers.label.ago_hours": string;
+  "activeOffers.label.ago_days": string;
+  "activeOffers.button.take": string;
+  "activeOffers.button.loading": string;
+  "activeOffers.disabled.own": string;
+  "activeOffers.disabled.balance": string;
+  "activeOffers.empty.title": string;
+  "activeOffers.empty.body": string;
+
+  // FAQ page
+  "faq.page.title": string;
+  "faq.notFilled.title": string;
+  "faq.notFilled.body": string;
+  "faq.howItWorks.title": string;
+  "faq.howItWorks.body": string;
 };
 
 const en: Dictionary = {
@@ -536,9 +633,18 @@ const en: Dictionary = {
     "These orders' makers have insufficient balance or Permit2 allowance — fills would revert. Hidden so you don't waste gas.",
   "trade.orderBook.hidden": "{count} {orders} hidden (insufficient maker balance / allowance)",
   "trade.orderBook.spread": "Spread",
+  "trade.orderBook.mid": "Mid / best",
   "trade.orderBook.statusLoading": "loading…",
   "trade.orderBook.statusEmpty": "empty",
   "trade.orderBook.statusAggregated": "aggregated",
+  "trade.orderBook.cancellerWarnPct":
+    "This maker has cancelled {pct}% of their orders — fills here are more likely to revert.",
+  "trade.orderBook.cancellerWarnOften":
+    "This maker cancels frequently — fills here are more likely to revert.",
+  "trade.orderBook.askDepth": "Sell side total",
+  "trade.orderBook.bidDepth": "Buy side total",
+  "trade.orderBook.depthTooltip":
+    "Total value of every order currently resting on this side of the book.",
 
   // Trade page — PlaceOrder
   "trade.placeOrder.title": "Place Order",
@@ -561,6 +667,8 @@ const en: Dictionary = {
   "trade.placeOrder.total": "Total",
   "trade.placeOrder.youReceive": "You receive (at least)",
   "trade.placeOrder.makerFee": "Protocol fee ({bps}%) (maker)",
+  "trade.placeOrder.caseBTakerNote":
+    "When a taker fills this order by selling {feeSide}, the protocol fee ({bps}%) is deducted from the taker's {quote} receive. Your payment ({makerToken}) is unchanged.",
   "trade.placeOrder.connectWallet": "Connect wallet",
   "trade.placeOrder.wrongNetwork": "Switch to a supported network",
   "trade.placeOrder.pairNotAvailable": "Pair not available on this network",
@@ -579,6 +687,18 @@ const en: Dictionary = {
   "trade.placeOrder.approvingStep1": "Approving {symbol} (1/2)…",
   "trade.placeOrder.approvingStep2": "Approving {symbol} (2/2)…",
   "trade.placeOrder.approvingErc20": "Approving {symbol}…",
+  "trade.placeOrder.wrappingEth": "Converting ETH → WETH…",
+  "trade.placeOrder.insufficientEthWeth": "Insufficient ETH + WETH balance",
+  "trade.placeOrder.insufficientBalance": "Insufficient balance",
+  "trade.placeOrder.amountTooSmall": "Amount too small",
+  "trade.placeOrder.priceDeviationAbove":
+    "Warning: your price is {pct}% ABOVE the market reference ({ref}). Please double-check for a typo before signing.",
+  "trade.placeOrder.priceDeviationBelow":
+    "Warning: your price is {pct}% BELOW the market reference ({ref}). Please double-check for a typo before signing.",
+  "trade.placeOrder.crossesBookBuy":
+    "This buy price is at or above the lowest resting ask ({price}). Your order crosses the book and can be filled immediately at your price. Based on all resting orders, including any the board currently hides as unfillable.",
+  "trade.placeOrder.crossesBookSell":
+    "This sell price is at or below the highest resting bid ({price}). Your order crosses the book and can be filled immediately at your price. Based on all resting orders, including any the board currently hides as unfillable.",
   "trade.placeOrder.orderSigned": "Order signed. Signature:",
   "trade.placeOrder.orderPosted":
     "Posted to the book. The taker side will see your order within a poll cycle.",
@@ -593,7 +713,8 @@ const en: Dictionary = {
   "trade.recentTrades.live": "live",
   "trade.recentTrades.syncing": "syncing",
   "trade.recentTrades.loading": "Loading recent fills…",
-  "trade.recentTrades.empty": "No fills in the last 24 hours.",
+  "trade.recentTrades.empty": "This pair has not traded yet.",
+  "trade.recentTrades.viewTx": "View this trade on {explorer}",
 
   // Trade page — StandingAllowanceBanner
   "trade.standingAllowance.headline":
@@ -638,6 +759,13 @@ const en: Dictionary = {
   "trade.signModal.ruleRatioOk": "Price ratio is within safe bounds",
   "trade.signModal.ruleRatioFail":
     "Price ratio exceeds the safety cap (extreme price)",
+  "trade.signModal.ruleDeviationOk":
+    "Price is within 30% of the market reference",
+  "trade.signModal.ruleDeviationFailAbove":
+    "Price is {pct}% ABOVE the market reference — check for a typo",
+  "trade.signModal.ruleDeviationFailBelow":
+    "Price is {pct}% BELOW the market reference — check for a typo",
+  "trade.signModal.ruleDeviationDetail": "market reference: {ref}",
 
   // Trade page — StatsBar
   "trade.statsBar.volume24h": "24H Volume",
@@ -645,12 +773,18 @@ const en: Dictionary = {
   "trade.statsBar.low24h": "24H Low",
   "trade.statsBar.makerFee": "Maker Fee",
   "trade.statsBar.makerFeeSuffix": "deducted from receive on sell",
+  "trade.statsBar.lastPrice": "Last trade",
+  "trade.statsBar.issuerLinks": "{symbol} official",
+  "trade.statsBar.website": "Website",
+  "trade.orderbook.crossedWarning":
+    "Orderbook crossed — arbitrage opportunity available",
+  "trade.orderbook.crossed": "crossed",
 
   // FillModal error messages
   "trade.fillError.title": "Fill failed",
   "trade.fillError.walletRejected": "You declined the request in your wallet.",
   "trade.fillError.timeout":
-    "Transaction is taking longer than expected. Check your wallet for a pending request.",
+    "This order has already been filled by someone else.",
   "trade.fillError.alreadyFilled":
     "This order has already been filled by someone else.",
   "trade.fillError.cancelled": "The maker cancelled this order before your fill landed.",
@@ -700,15 +834,35 @@ const en: Dictionary = {
   "trade.fillModal.maker": "Maker",
   "trade.fillModal.price": "Price",
   "trade.fillModal.youReceive": "You receive",
+  "trade.fillModal.youReceiveGross": "You receive (before fee)",
+  "trade.fillModal.youReceiveNet": "You receive (after fee)",
+  "trade.fillModal.protocolFee": "Protocol fee ({bps}%)",
   "trade.fillModal.youPay": "You pay",
+  "trade.fillModal.fillAmount": "Amount to fill",
+  "trade.fillModal.fillAmountMax": "Max",
+  "trade.fillModal.fillAmountRange":
+    "Enter an amount above 0 and up to {max} {symbol}.",
+  "trade.fillModal.fillAmountTooSmall":
+    "This amount is too small to settle — the payment side rounds to zero.",
+  "trade.fillModal.partialHint":
+    "You can fill part of this order. The remainder stays on the book.",
+  "trade.fillModal.deviationWarnAbove":
+    "Warning: this order's price is {pct}% ABOVE the market reference ({ref}). Filling it means paying well over market — double-check before you proceed.",
+  "trade.fillModal.deviationWarnBelow":
+    "Warning: this order's price is {pct}% BELOW the market reference ({ref}). Filling it means selling well under market — double-check before you proceed.",
+  "trade.fillModal.deviationAck":
+    "I understand this price is far from the market reference and I want to proceed anyway.",
   "trade.fillModal.orderStatus": "Order status",
   "trade.fillModal.cantFillOwn": "You can't fill your own order. Use Cancel instead.",
   "trade.fillModal.missingPermit":
     "This order is missing the per-order Permit2 signature (legacy). The maker needs to re-post it.",
   "trade.fillModal.switchNetwork": "Switch to a supported network to fill.",
+  "trade.fillModal.insufficientTakerBalance":
+    "Not enough {symbol} to pay for this fill (balance: {balance} {symbol} / needed: {needed} {symbol}).",
   "trade.fillModal.settled": "Filled — settlement confirmed on-chain.",
   "trade.fillModal.button.filled": "Filled",
   "trade.fillModal.button.approving": "Approving {symbol}…",
+  "trade.fillModal.button.wrappingEth": "Converting ETH → WETH…",
   "trade.fillModal.button.signPermit": "Sign Permit2…",
   "trade.fillModal.button.waitingWallet": "Waiting for wallet…",
   "trade.fillModal.button.confirmingTx": "Confirming on-chain…",
@@ -723,6 +877,63 @@ const en: Dictionary = {
   "trade.fillModal.statusExpired": "expired",
   "trade.fillModal.walletPopupHint":
     "Check your wallet popup and approve / sign the request to continue.",
+  "trade.fillModal.previewFeeError":
+    "Couldn't read the on-chain fee preview for this order. Filling is disabled until it resolves — close and retry, or check your network.",
+
+  "footer.terms": "Terms of Service",
+  "footer.privacy": "Privacy Policy",
+  "footer.contact": "Contact: cs@scenttoken.com",
+  "footer.copyright":
+    "© Universal Scent Technology Pte. Ltd. All rights reserved.",
+
+  "legal.translation.notice":
+    "This is a convenience translation. The English version is the authoritative original — in case of conflict, the English version prevails.",
+
+  "terms.consent.prefix": "I have read and agree to the",
+  "terms.consent.termsLink": "Terms of Service",
+  "terms.consent.privacyLink": "Privacy Policy",
+  "terms.consent.joiner": "and",
+  "terms.consent.suffix": ".",
+  "terms.consent.required":
+    "Please tick the box to confirm you accept the Terms before placing this order.",
+
+  "cookie.banner.body":
+    "We use cookies for security, language preference, and basic analytics. By using this site you agree to our use of cookies.",
+  "cookie.banner.accept": "Accept",
+  "cookie.banner.rejectNonEssential": "Essential only",
+  "cookie.banner.learnMore": "Learn more",
+
+  "onboarding.banner.text":
+    "ScentDEX is a peer-to-peer marketplace — orders fill when someone takes them, not automatically.",
+  "onboarding.banner.cta": "Learn more →",
+  "onboarding.banner.dismissAria": "Dismiss banner",
+
+  "activeOffers.heading": "Active Offers",
+  "activeOffers.subtext":
+    "Open orders waiting for a counterparty. Click any offer to take it.",
+  "activeOffers.badge.sell": "SELL",
+  "activeOffers.badge.buy": "BUY",
+  "activeOffers.label.maker": "Maker:",
+  "activeOffers.label.filled": "Filled: {pct}%",
+  "activeOffers.label.ago_just_now": "just now",
+  "activeOffers.label.ago_minutes": "{n}m ago",
+  "activeOffers.label.ago_hours": "{n}h ago",
+  "activeOffers.label.ago_days": "{n}d ago",
+  "activeOffers.button.take": "Take this offer",
+  "activeOffers.button.loading": "Loading…",
+  "activeOffers.disabled.own": "Your offer — can't take your own",
+  "activeOffers.disabled.balance": "Insufficient {token} to take this",
+  "activeOffers.empty.title": "No active offers yet.",
+  "activeOffers.empty.body":
+    "Place an order to start the market, or check back in a moment.",
+
+  "faq.page.title": "FAQ",
+  "faq.notFilled.title": "Why isn't my order filled?",
+  "faq.notFilled.body":
+    "Your order sits on ScentDEX as a *limit order* — it waits on the book until another trader (a \"taker\") decides to fill it. Nothing fills it automatically. This is by design: ScentDEX is a peer-to-peer marketplace, not a centralized matching engine.\n\n**Tips to get filled faster:**\n\n- **Tighten your price.** The closer your price is to the current best ask/bid, the more attractive your order looks to takers.\n- **Be patient.** Orders can sit for minutes or hours before a counterparty arrives, especially during low-volume windows.\n- **Browse Active Offers.** If you're willing to take an existing offer instead of placing one, scroll down to *Active Offers* and tap one — your trade settles immediately on-chain.\n\nIf your order has been on the book for a long time and the market has moved past it, you can always cancel it and replace it at a new price. Cancellation is on-chain and gas-paid by you.",
+  "faq.howItWorks.title": "How does ScentDEX work? (vs centralized exchanges)",
+  "faq.howItWorks.body":
+    "ScentDEX is a **peer-to-peer limit-order marketplace**. Every offer you see on the book or in Active Offers was posted by another user. When you take an offer, the trade settles directly on-chain — no broker, no custodian, no matching engine in the middle.\n\n**Quick comparison:**\n\n|                              | Centralized exchange (CEX) | ScentDEX                  |\n|------------------------------|----------------------------|---------------------------|\n| Who matches orders?          | Exchange's matching engine | You do — by taking offers |\n| Where do funds sit?          | In the exchange's custody  | In your wallet            |\n| What does the maker pay?     | Trading fees on fill       | Zero gas to post an order |\n| What does the taker pay?     | Trading fees on fill       | Gas + fee on fill         |\n| Where are orders stored?     | Exchange's database        | Off-chain, signed by maker; settled on-chain |\n| Can the operator censor you? | Yes                        | No — settlement is on-chain |\n\n**What this means in practice:**\n\n- Posting an order is free (no gas). It's a signed message, not a transaction.\n- Taking an order requires a wallet signature and gas, because settlement happens on-chain.\n- Your assets never leave your wallet until the moment a trade settles.\n- ScentDEX itself never holds your funds.\n\nIf you're used to a CEX, the main mindset shift is this: **the order book is a list of standing offers, not a queue that fills itself**. To trade right now, take an existing offer. To trade at your own price, post one and wait.",
 };
 
 const ja: Dictionary = {
@@ -931,9 +1142,18 @@ const ja: Dictionary = {
     "これらの注文のメイカーは残高または Permit2 の許可が不足しています。リバートされるため非表示にしています。",
   "trade.orderBook.hidden": "{count} 件の注文が非表示（メイカーの残高・許可が不足）",
   "trade.orderBook.spread": "スプレッド",
+  "trade.orderBook.mid": "中値／最良",
   "trade.orderBook.statusLoading": "読込中…",
   "trade.orderBook.statusEmpty": "なし",
   "trade.orderBook.statusAggregated": "集計済み",
+  "trade.orderBook.cancellerWarnPct":
+    "このメイカーは注文の {pct}% をキャンセルしています。ここでの約定は失敗しやすい傾向があります。",
+  "trade.orderBook.cancellerWarnOften":
+    "このメイカーは頻繁にキャンセルしています。ここでの約定は失敗しやすい傾向があります。",
+  "trade.orderBook.askDepth": "売り板の合計",
+  "trade.orderBook.bidDepth": "買い板の合計",
+  "trade.orderBook.depthTooltip":
+    "この板に現在出ている注文の合計金額です。",
 
   // Trade page — PlaceOrder
   "trade.placeOrder.title": "注文を出す",
@@ -954,6 +1174,8 @@ const ja: Dictionary = {
   "trade.placeOrder.total": "合計",
   "trade.placeOrder.youReceive": "受取額（最低）",
   "trade.placeOrder.makerFee": "プロトコル手数料 ({bps}%)（メイカー）",
+  "trade.placeOrder.caseBTakerNote":
+    "テイカーが {feeSide} を売却して約定した場合、テイカー側の受取 {quote} から {bps}% が差し引かれます。あなたの支払額（{makerToken}）は変わりません。",
   "trade.placeOrder.connectWallet": "ウォレットを接続",
   "trade.placeOrder.wrongNetwork": "対応ネットワークに切り替え",
   "trade.placeOrder.pairNotAvailable": "このネットワークでは取引ペアが利用できません",
@@ -972,6 +1194,18 @@ const ja: Dictionary = {
   "trade.placeOrder.approvingStep1": "{symbol} を承認中（1/2）…",
   "trade.placeOrder.approvingStep2": "{symbol} を承認中（2/2）…",
   "trade.placeOrder.approvingErc20": "{symbol} を承認中…",
+  "trade.placeOrder.wrappingEth": "ETH → WETH に変換中…",
+  "trade.placeOrder.insufficientEthWeth": "ETH + WETH の残高が不足しています",
+  "trade.placeOrder.insufficientBalance": "残高が不足しています",
+  "trade.placeOrder.amountTooSmall": "数量が小さすぎます",
+  "trade.placeOrder.priceDeviationAbove":
+    "警告: この価格は基準価格（{ref}）より {pct}% 高くなっています。入力ミスがないか署名前にご確認ください。",
+  "trade.placeOrder.priceDeviationBelow":
+    "警告: この価格は基準価格（{ref}）より {pct}% 低くなっています。入力ミスがないか署名前にご確認ください。",
+  "trade.placeOrder.crossesBookBuy":
+    "この買い価格は最良売り気配（{price}）以上です。板とクロスしており、この価格で即座に約定される可能性があります。※板上の全未約定注文（残高不足等で非表示のものを含む）に基づく警告です。",
+  "trade.placeOrder.crossesBookSell":
+    "この売り価格は最良買い気配（{price}）以下です。板とクロスしており、この価格で即座に約定される可能性があります。※板上の全未約定注文（残高不足等で非表示のものを含む）に基づく警告です。",
   "trade.placeOrder.orderSigned": "署名:",
   "trade.placeOrder.orderPosted":
     "板に投稿しました。次のポーリングでテイカー側にも表示されます。",
@@ -986,7 +1220,8 @@ const ja: Dictionary = {
   "trade.recentTrades.live": "ライブ",
   "trade.recentTrades.syncing": "同期中",
   "trade.recentTrades.loading": "最近の約定を読み込み中…",
-  "trade.recentTrades.empty": "過去 24 時間に約定はありません。",
+  "trade.recentTrades.empty": "このペアはまだ約定していません。",
+  "trade.recentTrades.viewTx": "{explorer} でこの取引を表示",
 
   // Trade page — StandingAllowanceBanner
   "trade.standingAllowance.headline":
@@ -1031,6 +1266,12 @@ const ja: Dictionary = {
   "trade.signModal.ruleRatioOk": "価格比は安全範囲内です",
   "trade.signModal.ruleRatioFail":
     "価格比が安全上限を超えています（異常価格）",
+  "trade.signModal.ruleDeviationOk": "価格は基準価格の±30%以内です",
+  "trade.signModal.ruleDeviationFailAbove":
+    "価格が基準価格より {pct}% 高くなっています — 入力ミスにご注意",
+  "trade.signModal.ruleDeviationFailBelow":
+    "価格が基準価格より {pct}% 低くなっています — 入力ミスにご注意",
+  "trade.signModal.ruleDeviationDetail": "基準価格: {ref}",
 
   // Trade page — StatsBar
   "trade.statsBar.volume24h": "24H 出来高",
@@ -1038,12 +1279,18 @@ const ja: Dictionary = {
   "trade.statsBar.low24h": "24H 安値",
   "trade.statsBar.makerFee": "メイカー手数料",
   "trade.statsBar.makerFeeSuffix": "売り注文時、受取通貨から差引",
+  "trade.statsBar.lastPrice": "最終約定",
+  "trade.statsBar.issuerLinks": "{symbol} 公式",
+  "trade.statsBar.website": "公式サイト",
+  "trade.orderbook.crossedWarning":
+    "板が交差しています — アービトラージ機会あり",
+  "trade.orderbook.crossed": "交差中",
 
   // FillModal error messages
   "trade.fillError.title": "約定に失敗しました",
   "trade.fillError.walletRejected": "ウォレットで取引を拒否しました。",
   "trade.fillError.timeout":
-    "取引の確認に時間がかかっています。ウォレットの保留中リクエストを確認してください。",
+    "この注文は別の利用者によって既に約定済みです。",
   "trade.fillError.alreadyFilled":
     "この注文は別の利用者によって既に約定済みです。",
   "trade.fillError.cancelled":
@@ -1094,15 +1341,35 @@ const ja: Dictionary = {
   "trade.fillModal.maker": "メイカー",
   "trade.fillModal.price": "価格",
   "trade.fillModal.youReceive": "受取",
+  "trade.fillModal.youReceiveGross": "受取（手数料引き前）",
+  "trade.fillModal.youReceiveNet": "実際の受取",
+  "trade.fillModal.protocolFee": "プロトコル手数料 ({bps}%)",
   "trade.fillModal.youPay": "支払",
+  "trade.fillModal.fillAmount": "約定する数量",
+  "trade.fillModal.fillAmountMax": "全量",
+  "trade.fillModal.fillAmountRange":
+    "0 より大きく {max} {symbol} 以下の数量を入力してください。",
+  "trade.fillModal.fillAmountTooSmall":
+    "数量が小さすぎて決済できません（支払側が 0 に丸められます）。",
+  "trade.fillModal.partialHint":
+    "この注文は一部だけ約定できます。残りは板に残ります。",
+  "trade.fillModal.deviationWarnAbove":
+    "警告: この注文の価格は基準価格（{ref}）より {pct}% 高くなっています。約定すると市場価格より大幅に高く買うことになります。よくご確認ください。",
+  "trade.fillModal.deviationWarnBelow":
+    "警告: この注文の価格は基準価格（{ref}）より {pct}% 低くなっています。約定すると市場価格より大幅に安く売ることになります。よくご確認ください。",
+  "trade.fillModal.deviationAck":
+    "価格が基準価格から大きく離れていることを理解した上で続行します。",
   "trade.fillModal.orderStatus": "注文ステータス",
   "trade.fillModal.cantFillOwn": "自分の注文は約定できません。代わりにキャンセルしてください。",
   "trade.fillModal.missingPermit":
     "この注文には注文単位の Permit2 署名がありません（旧形式）。メイカーが再投稿する必要があります。",
   "trade.fillModal.switchNetwork": "対応ネットワークに切り替えて約定してください。",
+  "trade.fillModal.insufficientTakerBalance":
+    "支払いに必要な {symbol} が足りません（残高: {balance} {symbol} / 必要: {needed} {symbol}）。",
   "trade.fillModal.settled": "約定済み — オンチェーンで確定しました。",
   "trade.fillModal.button.filled": "約定済み",
   "trade.fillModal.button.approving": "{symbol} を承認中…",
+  "trade.fillModal.button.wrappingEth": "ETH → WETH に変換中…",
   "trade.fillModal.button.signPermit": "Permit2 に署名…",
   "trade.fillModal.button.waitingWallet": "ウォレット応答待ち…",
   "trade.fillModal.button.confirmingTx": "オンチェーン確認中…",
@@ -1117,6 +1384,63 @@ const ja: Dictionary = {
   "trade.fillModal.statusExpired": "期限切れ",
   "trade.fillModal.walletPopupHint":
     "ウォレットのポップアップを確認して、承認または署名のボタンを押してください。",
+  "trade.fillModal.previewFeeError":
+    "この注文のオンチェーン手数料プレビューを取得できませんでした。解決するまで約定はできません — 一度閉じて再試行するか、ネットワークを確認してください。",
+
+  "footer.terms": "利用規約",
+  "footer.privacy": "プライバシーポリシー",
+  "footer.contact": "お問い合わせ: cs@scenttoken.com",
+  "footer.copyright":
+    "© Universal Scent Technology Pte. Ltd. All rights reserved.",
+
+  "legal.translation.notice":
+    "本翻訳は参考のためのものです。英語版が正本であり、矛盾が生じた場合は英語版が優先します。",
+
+  "terms.consent.prefix": "",
+  "terms.consent.termsLink": "利用規約",
+  "terms.consent.privacyLink": "プライバシーポリシー",
+  "terms.consent.joiner": "および",
+  "terms.consent.suffix": "を読み、これに同意します。",
+  "terms.consent.required":
+    "注文する前に、利用規約に同意するチェックボックスにチェックを入れてください。",
+
+  "cookie.banner.body":
+    "本サイトはセキュリティ、言語設定、基本的なアクセス解析のために Cookie を使用します。本サイトをご利用いただくことで、Cookie の使用に同意したものとみなされます。",
+  "cookie.banner.accept": "同意する",
+  "cookie.banner.rejectNonEssential": "必須のみ",
+  "cookie.banner.learnMore": "詳細",
+
+  "onboarding.banner.text":
+    "ScentDEX はピアツーピア型（peer-to-peer）のマーケットプレイスです。注文は誰かが取りに来たときに約定し、自動的にはマッチしません。",
+  "onboarding.banner.cta": "詳しく見る →",
+  "onboarding.banner.dismissAria": "バナーを閉じる",
+
+  "activeOffers.heading": "公開中のオファー",
+  "activeOffers.subtext":
+    "取引相手を待っている公開中の注文です。クリックして注文を取りに行ってください。",
+  "activeOffers.badge.sell": "売り",
+  "activeOffers.badge.buy": "買い",
+  "activeOffers.label.maker": "Maker:",
+  "activeOffers.label.filled": "約定済み: {pct}%",
+  "activeOffers.label.ago_just_now": "たった今",
+  "activeOffers.label.ago_minutes": "{n}分前",
+  "activeOffers.label.ago_hours": "{n}時間前",
+  "activeOffers.label.ago_days": "{n}日前",
+  "activeOffers.button.take": "このオファーを取る",
+  "activeOffers.button.loading": "読み込み中…",
+  "activeOffers.disabled.own": "あなたのオファー — 自分の注文は取れません",
+  "activeOffers.disabled.balance": "残高不足 — このオファーを取るには {token} が足りません",
+  "activeOffers.empty.title": "公開中のオファーはまだありません。",
+  "activeOffers.empty.body":
+    "注文を出して市場を立ち上げるか、しばらくしてから再度ご確認ください。",
+
+  "faq.page.title": "よくある質問",
+  "faq.notFilled.title": "注文が約定しないのはなぜですか?",
+  "faq.notFilled.body":
+    "あなたの注文は ScentDEX に *指値注文（limit order）* として置かれ、別のトレーダー（「taker」）が約定させるまで板に待機します。自動的に約定することはありません。これは仕様です: ScentDEX はピアツーピア型（peer-to-peer）のマーケットプレイスであり、中央集権的なマッチングエンジンではありません。\n\n**早く約定させるためのヒント:**\n\n- **価格を引き締める。** 現在の最良アスク／最良ビッド（best ask/bid）に近い価格ほど、taker にとって魅力的に見えます。\n- **待つ。** 出来高が少ない時間帯は特に、取引相手が現れるまで数分から数時間かかることがあります。\n- **Active Offers を見る。** 自分で新規に注文を出すのではなく、既存のオファーを取りに行きたい場合は、画面下の *Active Offers* までスクロールしてカードをタップしてください。トレードはオンチェーン（on-chain）で即時に決済されます。\n\n注文が長時間板に残ったまま市場価格が乖離してしまった場合、いつでもキャンセルして新しい価格で出し直せます。キャンセルはオンチェーンで行われ、ガス代はあなたが負担します。",
+  "faq.howItWorks.title": "ScentDEX の仕組みは?（中央集権型取引所との違い）",
+  "faq.howItWorks.body":
+    "ScentDEX は **ピアツーピア型（peer-to-peer）の指値注文マーケットプレイス** です。板や Active Offers に表示されているオファーは、すべて他のユーザーが出したものです。あなたがオファーを取ると、トレードはオンチェーン（on-chain）で直接決済されます — 仲介業者も、カストディアンも、間に立つマッチングエンジンも存在しません。\n\n**簡単な比較:**\n\n|                              | 中央集権型取引所（CEX）            | ScentDEX                                       |\n|------------------------------|-----------------------------------|------------------------------------------------|\n| 注文を誰が約定させるか?           | 取引所のマッチングエンジン            | あなた自身 — オファーを取ることで約定          |\n| 資金はどこにあるか?               | 取引所のカストディ                   | あなたのウォレットの中                          |\n| メーカー（maker）が支払うもの       | 約定時の取引手数料                   | 注文を出すこと自体は無料（ガス代も不要）         |\n| テイカー（taker）が支払うもの       | 約定時の取引手数料                   | ガス代 + 約定時の手数料                          |\n| 注文はどこに保存されるか?          | 取引所のデータベース                 | オフチェーン（maker が署名）、決済はオンチェーン |\n| 運営は検閲できるか?               | はい                                | いいえ — 決済はオンチェーンで行われる            |\n\n**実際にはどういうことか:**\n\n- 注文を出すのは無料です（ガス代不要）。これはトランザクションではなく、署名されたメッセージです。\n- 注文を取るにはウォレット署名とガス代が必要です。決済がオンチェーンで行われるためです。\n- 資産はトレードが決済される瞬間までウォレットを離れません。\n- ScentDEX 自身は資金を一切預かりません。\n\nCEX に慣れている方は、ここが一番大きな考え方の違いです: **板は「待機中のオファーの一覧」であって、「自動で約定するキュー」ではありません**。今すぐトレードしたければ、既存のオファーを取ってください。自分の価格で取引したければ、注文を出して待ちます。",
 };
 
 // Stub other locales by reusing English. Full translations land in subsequent passes.
