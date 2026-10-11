@@ -1,0 +1,10 @@
+# gitleaks config for CI (.github/workflows/ci.yml). Default rules + narrow allowlist.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Public, well-known test material only"
+# Hardhat/Anvil default dev accounts used by the hermetic E2E suite to sign
+# throwaway orders (tests/e2e/support/orders.ts). These keys are published in
+# the Hardhat docs and hold no real funds.
+paths = ['''^tests/e2e/support/orders\.ts$''']

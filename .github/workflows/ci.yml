@@ -1,0 +1,91 @@
+# ScentDEX frontend CI — no repository secrets are used anywhere in this file.
+# Blocking:  npm ci → tsc --noEmit → next build → hermetic Playwright E2E → secret scan
+# Report-only (warning, does not fail the run):
+#   - eslint: 18 pre-existing react-hooks errors on main (2026-10-11). Make it blocking
+#     once /ust-dex-frontend clears them (delete `continue-on-error`).
+#   - npm audit: high/critical advisories are surfaced as warnings.
+# The E2E suite is hermetic by design (playwright.config.ts): DATABASE_URL/POSTGRES_URL
+# are forced empty (in-memory book, never Neon) and every non-localhost browser request
+# is aborted. It never touches production data or a wallet with funds.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: typecheck / build / e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      DATABASE_URL: ""
+      POSTGRES_URL: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install
+        run: npm ci --no-audit --no-fund
+      - name: Lint (report-only)
+        continue-on-error: true
+        run: npx eslint
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Build
+        run: npx next build
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+      - name: E2E (hermetic)
+        run: npx playwright test
+      - name: Upload Playwright traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: test-results/
+          retention-days: 7
+
+  audit:
+    name: npm audit (warn on high+)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: npm audit
+        run: |
+          if ! npm audit --omit=dev --audit-level=high; then
+            echo "::warning title=npm audit::high or critical advisories in production dependencies (see log)"
+          fi
+          if ! npm audit --audit-level=high > /dev/null; then
+            echo "::warning title=npm audit (incl. dev)::high or critical advisories including devDependencies"
+          fi
+
+  secrets:
+    name: secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        env:
+          GITLEAKS_VERSION: "8.21.2"
+        run: |
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar -xz gitleaks
+          ./gitleaks git --config .gitleaks.toml --redact --no-banner --verbose .
