@@ -1,17 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  createPublicClient,
-  decodeEventLog,
-  getAddress,
-  http,
-  type Hash,
-  type Hex,
-} from "viem";
-import { mainnet, sepolia } from "viem/chains";
+import { decodeEventLog, getAddress, type Hash, type Hex } from "viem";
 
 import { SCENTDEX_V5_ABI } from "@/lib/abi";
 import { SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
 import { findOrder, markFilled } from "@/lib/orders-store";
+import { rpcClientFor } from "@/lib/server-chain";
 
 /**
  * POST /api/orders/[hash]/filled
@@ -42,24 +35,6 @@ export const runtime = "nodejs";
 const ORDER_FILLED_EVENT = SCENTDEX_V5_ABI.find(
   (entry) => entry.type === "event" && entry.name === "OrderFilled",
 );
-
-function rpcClientFor(chainId: number) {
-  if (chainId === 11155111) {
-    const url =
-      process.env.SEPOLIA_RPC_URL ||
-      "https://ethereum-sepolia-rpc.publicnode.com";
-    return createPublicClient({ chain: sepolia, transport: http(url) });
-  }
-  if (chainId === 1) {
-    // Symmetric with Sepolia: fall back to a public node so a missing env var
-    // does not silently break the post-fill off-chain mirror (which causes
-    // filled orders to linger on the board and not appear in History).
-    const url =
-      process.env.MAINNET_RPC_URL || "https://ethereum-rpc.publicnode.com";
-    return createPublicClient({ chain: mainnet, transport: http(url) });
-  }
-  return null;
-}
 
 export async function POST(
   req: NextRequest,

@@ -7,6 +7,7 @@ import { SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
 import { formatPrice } from "@/lib/format-price";
 import { useTranslator } from "@/lib/locale-context";
 import type { Order } from "@/lib/order";
+import { belowTakerFloor, exceedsPriceCap } from "@/lib/price-limits";
 import { symbolLabel, type Token } from "@/lib/tokens";
 
 /**
@@ -18,6 +19,11 @@ import { symbolLabel, type Token } from "@/lib/tokens";
  * rule fails; a held-3-seconds "Sign anyway" override is offered for the
  * cases users may want to push through (e.g. testing).
  *
+ * Exception — the contract limits (Floor, Ratio) are HARD: the contract
+ * reverts every fill of such an order, so there is nothing to "push
+ * through". When either fails, or the limits are still loading / could not
+ * be read, the sign button is disabled with no override.
+ *
  * The four rules:
  *   1. Domain   — verifyingContract matches the official SCENTDEX V5 deploy on this chain
  *   2. Floor    — order.takerAmount >= minTakerAmount[takerToken]
@@ -25,7 +31,14 @@ import { symbolLabel, type Token } from "@/lib/tokens";
  *   4. Self     — order.maker matches the connected wallet (no surprise signer)
  */
 
-type RuleResult = { id: string; label: string; ok: boolean; detail?: string };
+type RuleResult = {
+  id: string;
+  label: string;
+  ok: boolean;
+  detail?: string;
+  /** Hard rules cannot be overridden with hold-to-sign. */
+  hard?: boolean;
+};
 
 export type SignConfirmContext = {
   chainId: number;
@@ -36,8 +49,14 @@ export type SignConfirmContext = {
   side: "buy" | "sell";
   /** Bigint min taker amount for the takerToken on the connected chain. */
   minTakerAmount?: bigint;
-  /** Bigint max price ratio (1e6 default). 0 means inactive. */
+  /** Contract maxPriceRatio(). 0 means the cap is disabled on-chain. */
   maxPriceRatio?: bigint;
+  /**
+   * Whether minTakerAmount / maxPriceRatio were read from the contract.
+   * Anything but "ready" blocks signing (the order cannot be verified).
+   * Omitted → legacy callers; the two rules are evaluated as given.
+   */
+  limitsStatus?: "loading" | "error" | "ready";
   /**
    * Fat-finger guard (rule 5). undefined → no market reference existed, the
    * rule row is omitted. null → checked, price within ±30% of reference.
@@ -64,6 +83,7 @@ export function SignConfirmModal({
   const t = useTranslator();
   const rules = useMemo(() => (ctx ? evaluateRules(ctx, t) : []), [ctx, t]);
   const allOk = rules.every((r) => r.ok);
+  const hardFail = rules.some((r) => !r.ok && r.hard);
   const [holdMs, setHoldMs] = useState(0);
 
   useEffect(() => {
@@ -116,7 +136,11 @@ export function SignConfirmModal({
         </div>
 
         <footer className="px-5 py-4 border-t border-line bg-bg/40 flex flex-col gap-2">
-          {!allOk ? (
+          {hardFail ? (
+            <div className="px-3 py-2 rounded-md bg-sell/10 border border-sell/30 text-[12px] text-sell">
+              {t("trade.signModal.contractLimitFailed")}
+            </div>
+          ) : !allOk ? (
             <div className="px-3 py-2 rounded-md bg-sell/10 border border-sell/30 text-[12px] text-sell">
               {t("trade.signModal.checksFailed")}
             </div>
@@ -131,6 +155,7 @@ export function SignConfirmModal({
             </button>
             <SignButton
               allOk={allOk}
+              hardFail={hardFail}
               signing={!!signing}
               holdMs={holdMs}
               setHoldMs={setHoldMs}
@@ -249,18 +274,31 @@ function RuleRow({ rule }: { rule: RuleResult }) {
 
 function SignButton({
   allOk,
+  hardFail,
   signing,
   holdMs,
   setHoldMs,
   onConfirm,
 }: {
   allOk: boolean;
+  hardFail: boolean;
   signing: boolean;
   holdMs: number;
   setHoldMs: (n: number) => void;
   onConfirm: () => void;
 }) {
   const t = useTranslator();
+  // Contract limit failed (or unverifiable): no way to sign.
+  if (hardFail) {
+    return (
+      <button
+        disabled
+        className="flex-1 py-2.5 rounded-md bg-white/[0.04] text-fg-faint font-medium text-[13px] cursor-not-allowed"
+      >
+        {t("trade.signModal.blockedByContract")}
+      </button>
+    );
+  }
   // When all rules pass: simple click. When any rule fails: hold-3s override.
   if (allOk) {
     return (
@@ -329,14 +367,30 @@ function evaluateRules(
       true,
   );
 
-  const floorOk = ctx.minTakerAmount === undefined
-    ? true
-    : ctx.order.takerAmount >= ctx.minTakerAmount;
+  const limitsReady =
+    ctx.limitsStatus === undefined || ctx.limitsStatus === "ready";
 
-  const ratioOk = !ctx.maxPriceRatio || ctx.maxPriceRatio === 0n
-    ? true
-    : (ctx.order.makerAmount * 10n ** 18n) / ctx.order.takerAmount <=
-      ctx.maxPriceRatio;
+  const floorOk =
+    limitsReady &&
+    (ctx.minTakerAmount === undefined ||
+      !belowTakerFloor(ctx.order.takerAmount, ctx.minTakerAmount));
+
+  const ratioOk =
+    limitsReady &&
+    (ctx.maxPriceRatio === undefined
+      ? ctx.order.takerAmount > 0n
+      : !exceedsPriceCap(
+          ctx.order.makerAmount,
+          ctx.order.takerAmount,
+          ctx.maxPriceRatio,
+        ));
+
+  const limitsLabel =
+    ctx.limitsStatus === "loading"
+      ? t("trade.signModal.limitsLoading")
+      : ctx.limitsStatus === "error"
+      ? t("trade.signModal.limitsUnavailable")
+      : null;
 
   const selfOk =
     ctx.order.maker.toLowerCase() === ctx.walletAddress.toLowerCase();
@@ -367,17 +421,23 @@ function evaluateRules(
     },
     {
       id: "floor",
-      label: floorOk
-        ? t("trade.signModal.ruleFloorOk")
-        : t("trade.signModal.ruleFloorFail"),
+      label:
+        limitsLabel ??
+        (floorOk
+          ? t("trade.signModal.ruleFloorOk")
+          : t("trade.signModal.ruleFloorFail")),
       ok: floorOk,
+      hard: true,
     },
     {
       id: "ratio",
-      label: ratioOk
-        ? t("trade.signModal.ruleRatioOk")
-        : t("trade.signModal.ruleRatioFail"),
+      label:
+        limitsLabel ??
+        (ratioOk
+          ? t("trade.signModal.ruleRatioOk")
+          : t("trade.signModal.ruleRatioFail")),
       ok: ratioOk,
+      hard: true,
     },
   ];
 

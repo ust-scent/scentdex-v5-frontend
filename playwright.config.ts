@@ -49,6 +49,13 @@ export default defineConfig({
         "0x3293462B4Ef0dbC20817562d295a368556689249",
       NEXT_PUBLIC_SDTTEST_WETH_ADDRESS:
         "0x1074D6FFb18130D7F3CC1E6471240FFc24abD047",
+      // POST /api/orders checks the contract's price limits. In this
+      // hermetic server they come from a fixture instead of an RPC
+      // (lib/server-chain.ts; ignored when NODE_ENV=production).
+      SCENTDEX_PRICE_LIMITS_FIXTURE: JSON.stringify({
+        maxPriceRatio: (10n ** 33n).toString(),
+        minTakerAmount: "1000",
+      }),
     },
   },
 });
