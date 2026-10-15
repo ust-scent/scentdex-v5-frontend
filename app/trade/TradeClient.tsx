@@ -1,6 +1,8 @@
 "use client";
 
+import { ActiveOffers } from "@/app/components/ActiveOffers";
 import { BottomTabs } from "@/app/components/BottomTabs";
+import { OnboardingBanner } from "@/app/components/OnboardingBanner";
 import { OrderBook } from "@/app/components/OrderBook";
 import { PairTabs, usePair } from "@/app/components/PairTabs";
 import { PlaceOrder } from "@/app/components/PlaceOrder";
@@ -19,12 +21,15 @@ export function TradeClient({ initialLocale }: { initialLocale: SupportedLocale 
         <PairTabs active={pair} onChange={setPair} />
         <StatsBar pair={pair} />
         <StandingAllowanceBanner />
+        <OnboardingBanner />
 
         <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr_1fr] gap-3 px-3 sm:px-6 py-3 sm:py-4">
           <OrderBook pair={pair} />
           <PlaceOrder pair={pair} />
           <RecentTrades pair={pair} />
         </div>
+
+        <ActiveOffers pair={pair} />
 
         <div className="px-3 sm:px-6 pb-6 sm:pb-8">
           <BottomTabs />

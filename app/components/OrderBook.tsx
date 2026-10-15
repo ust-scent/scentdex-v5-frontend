@@ -6,7 +6,14 @@ import {
   classifyCancelRate,
   useMakerStats,
 } from "@/lib/hooks/useMakerStats";
-import { TOKENS, type Pair } from "@/lib/tokens";
+import { formatPrice } from "@/lib/format-price";
+import { formatTokenTotal } from "@/lib/format-amount";
+import {
+  TOKENS,
+  displayDecimalsFor,
+  symbolLabel,
+  type Pair,
+} from "@/lib/tokens";
 import { useEffect, useMemo, useState } from "react";
 import { formatUnits, type Address, type Hex } from "viem";
 import { useAccount, useChainId } from "wagmi";
@@ -130,10 +137,25 @@ export function OrderBook({ pair }: { pair: Pair }) {
     0,
   );
 
-  const { asks, bids, midPrice, spread, spreadBps } = useMemo(
+  const {
+    asks,
+    bids,
+    midPrice,
+    spread,
+    spreadBps,
+    crossed,
+    askQuoteTotal,
+    bidQuoteTotal,
+  } = useMemo(
     () => deriveBook(fillableOrders, pair, chainId),
     [fillableOrders, pair, chainId],
   );
+
+  // Quote token drives both the unit label and the display precision, so a
+  // pair added to PAIRS later gets correct depth totals with no edit here.
+  const quoteToken = TOKENS.find((tok) => tok.symbol === pair.quote);
+  const quoteDecimals = quoteToken?.decimals ?? 18;
+  const quoteFractionDigits = displayDecimalsFor(pair.quote);
 
   // Pull reputation for every visible maker so we can warn buyers about
   // frequent cancellers before they spend gas.
@@ -165,13 +187,13 @@ export function OrderBook({ pair }: { pair: Pair }) {
 
         <div className="grid grid-cols-3 px-4 py-2 text-[10px] uppercase tracking-[0.14em] text-fg-faint">
           <div>
-            {t("trade.placeOrder.price")} ({pair.quote})
+            {t("trade.placeOrder.price")} ({symbolLabel(pair.quote)})
           </div>
           <div className="text-right">
-            {t("trade.placeOrder.amount")} ({pair.base})
+            {t("trade.placeOrder.amount")} ({symbolLabel(pair.base)})
           </div>
           <div className="text-right">
-            {t("trade.placeOrder.total")} ({pair.base})
+            {t("trade.placeOrder.total")} ({symbolLabel(pair.base)})
           </div>
         </div>
 
@@ -181,6 +203,16 @@ export function OrderBook({ pair }: { pair: Pair }) {
           </div>
         ) : (
           <div className="font-mono text-[13px] leading-tight">
+            {!empty ? (
+              <DepthTotal
+                side="sell"
+                units={askQuoteTotal}
+                tokenDecimals={quoteDecimals}
+                fractionDigits={quoteFractionDigits}
+                quoteLabel={symbolLabel(pair.quote)}
+              />
+            ) : null}
+
             {asks.map((r) => (
               <BookRow
                 key={`ask-${r.apiOrder.orderHash}`}
@@ -195,20 +227,28 @@ export function OrderBook({ pair }: { pair: Pair }) {
               />
             ))}
 
-            <div className="flex items-center justify-between px-4 py-3 border-y border-line bg-white/[0.015]">
-              <span className="text-[18px] tnum">
-                {midPrice ? midPrice.toFixed(4) : "—"}
-              </span>
-              <span className="text-[11px] text-fg-faint">
-                {t("trade.orderBook.spread")}{" "}
-                <span className="tnum text-fg-dim">
-                  {spread ? spread.toFixed(4) : "—"}
-                </span>{" "}
-                <span className="tnum">
-                  ({spreadBps ? spreadBps.toFixed(2) + "%" : "—"})
+            {crossed ? (
+              <div className="flex items-center gap-2 px-4 py-3 border-y border-amber-500/40 bg-amber-500/10 text-[12px] text-amber-200">
+                <span aria-hidden="true">⚠</span>
+                <span>{t("trade.orderbook.crossedWarning")}</span>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between px-4 py-3 border-y border-line bg-white/[0.015]">
+                <span className="flex items-baseline gap-2">
+                  <span className="text-[10px] uppercase tracking-[0.16em] text-fg-faint">
+                    {t("trade.orderBook.mid")}
+                  </span>
+                  <span className="text-[18px] tnum">{formatPrice(midPrice)}</span>
                 </span>
-              </span>
-            </div>
+                <span className="text-[11px] text-fg-faint">
+                  {t("trade.orderBook.spread")}{" "}
+                  <span className="tnum text-fg-dim">{formatPrice(spread)}</span>{" "}
+                  <span className="tnum">
+                    ({spreadBps !== null ? spreadBps.toFixed(2) + "%" : "—"})
+                  </span>
+                </span>
+              </div>
+            )}
 
             {bids.map((r) => (
               <BookRow
@@ -223,6 +263,16 @@ export function OrderBook({ pair }: { pair: Pair }) {
                 onClick={() => setSelected(r.apiOrder)}
               />
             ))}
+
+            {!empty ? (
+              <DepthTotal
+                side="buy"
+                units={bidQuoteTotal}
+                tokenDecimals={quoteDecimals}
+                fractionDigits={quoteFractionDigits}
+                quoteLabel={symbolLabel(pair.quote)}
+              />
+            ) : null}
           </div>
         )}
 
@@ -257,6 +307,57 @@ export function OrderBook({ pair }: { pair: Pair }) {
   );
 }
 
+/**
+ * Total quote-token value resting on one side of the book.
+ *
+ * Placed at the OUTER edge of the side it sums (sell total above the asks
+ * block, buy total below the bids block) rather than together in the middle:
+ * each figure then caps its own block, and side colour + label + adjacency
+ * all agree on which side it belongs to. Stacking both at the spread would
+ * put two numbers on the one row where the reader is already parsing mid and
+ * spread, and where "above the line" vs "below the line" is the only cue.
+ *
+ * Both totals render whenever the board is non-empty, including a side that
+ * happens to be flat. A one-sided book showing "0" is real information about
+ * depth — suppressing the row instead would move the surviving figure and
+ * make the two states look like different layouts.
+ */
+function DepthTotal({
+  side,
+  units,
+  tokenDecimals,
+  fractionDigits,
+  quoteLabel,
+}: {
+  side: "buy" | "sell";
+  units: bigint;
+  tokenDecimals: number;
+  fractionDigits: number;
+  quoteLabel: string;
+}) {
+  const t = useTranslator();
+  const colour = side === "buy" ? "text-buy" : "text-sell";
+
+  return (
+    <div
+      className={`flex items-center justify-between px-4 py-2 bg-white/[0.015] ${
+        side === "sell" ? "border-b border-line" : "border-t border-line"
+      }`}
+      title={t("trade.orderBook.depthTooltip")}
+    >
+      <span className="text-[10px] uppercase tracking-[0.14em] text-fg-faint">
+        {side === "buy"
+          ? t("trade.orderBook.bidDepth")
+          : t("trade.orderBook.askDepth")}
+      </span>
+      <span className={`tnum ${colour}`}>
+        {formatTokenTotal(units, tokenDecimals, fractionDigits)}{" "}
+        <span className="text-fg-faint">{quoteLabel}</span>
+      </span>
+    </div>
+  );
+}
+
 function BookRow({
   row,
   side,
@@ -270,6 +371,7 @@ function BookRow({
   isOwn: boolean;
   onClick: () => void;
 }) {
+  const t = useTranslator();
   const colour = side === "buy" ? "text-buy" : "text-sell";
   const bg = side === "buy" ? "bg-buy-soft" : "bg-sell-soft";
 
@@ -278,11 +380,14 @@ function BookRow({
   const reputationBadge =
     cancelClass === "ok" ? null : (
       <span
-        title={`This maker has cancelled ${
+        title={
           r !== undefined
-            ? `${Math.round(r * 100)}% of their orders`
-            : "frequently"
-        } — fills here are more likely to revert.`}
+            ? t("trade.orderBook.cancellerWarnPct").replace(
+                "{pct}",
+                String(Math.round(r * 100)),
+              )
+            : t("trade.orderBook.cancellerWarnOften")
+        }
         className={`text-[9px] font-mono px-1 rounded ${
           cancelClass === "strong"
             ? "bg-sell/20 text-sell"
@@ -315,7 +420,7 @@ function BookRow({
             aria-hidden="true"
           />
         ) : null}
-        <span>{row.price.toFixed(4)}</span>
+        <span>{formatPrice(row.price)}</span>
         {reputationBadge}
         {isOwn ? (
           <span className="text-[9px] font-mono px-1 rounded bg-white/[0.06] text-fg-faint">
@@ -337,7 +442,16 @@ function deriveBook(orders: ApiOrder[], pair: Pair, chainId: number) {
   const baseToken = TOKENS.find((t) => t.symbol === pair.base);
   const quoteToken = TOKENS.find((t) => t.symbol === pair.quote);
   if (!baseToken || !quoteToken) {
-    return { asks: [], bids: [], midPrice: null, spread: null, spreadBps: null };
+    return {
+      asks: [],
+      bids: [],
+      midPrice: null,
+      spread: null,
+      spreadBps: null,
+      crossed: false,
+      askQuoteTotal: 0n,
+      bidQuoteTotal: 0n,
+    };
   }
 
   const baseAddr = (baseToken.addresses[chainId] ?? "").toLowerCase();
@@ -345,6 +459,15 @@ function deriveBook(orders: ApiOrder[], pair: Pair, chainId: number) {
 
   const asks: Row[] = [];
   const bids: Row[] = [];
+
+  // Depth totals: how much quote-token value is actually resting on each
+  // side right now. Accumulated in the token's smallest unit as bigint —
+  // never via the per-row `price`/`amount` floats above, which are display
+  // values carrying a division each. Summing those would let the headline
+  // number drift from the orders it claims to total, and this figure exists
+  // precisely so a taker can trust the board's depth at a glance.
+  let askQuoteTotal = 0n;
+  let bidQuoteTotal = 0n;
 
   for (const o of orders) {
     if (o.status !== "open" && o.status !== "partially-filled") continue;
@@ -370,17 +493,41 @@ function deriveBook(orders: ApiOrder[], pair: Pair, chainId: number) {
     const baseDecimals = baseToken.decimals;
     const quoteDecimals = quoteToken.decimals;
 
+    // Partial fills: the board must show what's still buyable (remaining),
+    // not the original size. Price stays the order's constant unit price
+    // (computed from the FULL amounts), only the displayed quantity shrinks.
+    const filledMaker = BigInt(o.filledMakerAmount ?? "0");
+    const remainingMaker =
+      makerAmount > filledMaker ? makerAmount - filledMaker : 0n;
+    if (remainingMaker === 0n) continue; // fully filled — nothing left to show
+
     let amount: number;
     let price: number;
     if (isSell) {
-      amount = Number(formatUnits(makerAmount, baseDecimals));
-      const quote = Number(formatUnits(takerAmount, quoteDecimals));
-      price = quote / amount;
+      const fullBase = Number(formatUnits(makerAmount, baseDecimals));
+      price = Number(formatUnits(takerAmount, quoteDecimals)) / fullBase;
+      amount = Number(formatUnits(remainingMaker, baseDecimals));
     } else {
-      amount = Number(formatUnits(takerAmount, baseDecimals));
-      const quote = Number(formatUnits(makerAmount, quoteDecimals));
-      price = quote / amount;
+      const fullBase = Number(formatUnits(takerAmount, baseDecimals));
+      price = Number(formatUnits(makerAmount, quoteDecimals)) / fullBase;
+      // remaining base = takerAmount × remainingMaker / makerAmount
+      const remainingBase = (takerAmount * remainingMaker) / makerAmount;
+      amount = Number(formatUnits(remainingBase, baseDecimals));
     }
+
+    // Quote-token value still resting in THIS order, in smallest units.
+    //  - bid: the maker is selling quote, so the unfilled maker amount
+    //    already IS the quote value — exact, no arithmetic at all.
+    //  - ask: the maker is selling base, so the quote it would draw is
+    //    takerAmount pro-rated by the base still unsold. Integer division
+    //    floors, understating by at most 1 unit (1 wei) per order, which
+    //    keeps the total from ever overstating available depth.
+    const remainingQuote = isSell
+      ? (takerAmount * remainingMaker) / makerAmount
+      : remainingMaker;
+
+    if (isSell) askQuoteTotal += remainingQuote;
+    else bidQuoteTotal += remainingQuote;
 
     const row: Row = {
       price,
@@ -393,11 +540,19 @@ function deriveBook(orders: ApiOrder[], pair: Pair, chainId: number) {
     (isSell ? asks : bids).push(row);
   }
 
-  // Sort: asks ascending price (top of book at top), bids descending price
-  asks.sort((a, b) => a.price - b.price);
+  // Sort so both sides converge on best-price toward the centre spread —
+  // standard DEX order-book layout (Binance, Uniswap, 1inch, 0x, …):
+  //   asks (descending): top row = highest ask, bottom row = best ask
+  //   bids (descending): top row = best bid, bottom row = lowest bid
+  // Reading down the asks → up the bids therefore tracks falling price
+  // through the spread continuously.
+  asks.sort((a, b) => b.price - a.price);
   bids.sort((a, b) => b.price - a.price);
 
-  // Cumulative totals for the depth bars.
+  // Cumulative totals for the depth bars. Both sides accumulate AWAY
+  // from the centre spread so the bar visually grows as you move toward
+  // worse prices. For asks: walk bottom→top (best ask is at the bottom);
+  // for bids: walk top→bottom (best bid is at the top).
   let cum = 0;
   for (let i = asks.length - 1; i >= 0; i--) {
     cum += asks[i].amount;
@@ -409,16 +564,39 @@ function deriveBook(orders: ApiOrder[], pair: Pair, chainId: number) {
     b.total = cum;
   }
 
-  const bestAsk = asks[0]?.price ?? null;
+  // Best prices sit adjacent to the spread: best ask = last asks row
+  // (bottom of the asks block), best bid = first bids row (top of the
+  // bids block).
+  const bestAsk = asks[asks.length - 1]?.price ?? null;
   const bestBid = bids[0]?.price ?? null;
-  const midPrice =
-    bestAsk !== null && bestBid !== null
+  // A crossed book (bestAsk < bestBid) is structurally an open arbitrage
+  // — signed-order DEX semantics mean the wires don't auto-match, so the
+  // condition can persist until a taker (or a keeper bot) fills both
+  // legs. We surface it as a banner instead of computing a negative
+  // spread / nonsensical mid, which would otherwise read as a real
+  // market level.
+  const crossed =
+    bestAsk !== null && bestBid !== null && bestAsk < bestBid;
+  const midPrice = crossed
+    ? null
+    : bestAsk !== null && bestBid !== null
       ? (bestAsk + bestBid) / 2
       : bestAsk ?? bestBid;
   const spread =
-    bestAsk !== null && bestBid !== null ? bestAsk - bestBid : null;
+    !crossed && bestAsk !== null && bestBid !== null
+      ? bestAsk - bestBid
+      : null;
   const spreadBps =
     spread !== null && midPrice ? (spread / midPrice) * 100 : null;
 
-  return { asks, bids, midPrice, spread, spreadBps };
+  return {
+    asks,
+    bids,
+    midPrice,
+    spread,
+    spreadBps,
+    crossed,
+    askQuoteTotal,
+    bidQuoteTotal,
+  };
 }

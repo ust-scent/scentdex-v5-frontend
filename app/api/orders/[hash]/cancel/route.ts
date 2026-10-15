@@ -8,29 +8,28 @@ import {
 
 import { SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
 import { cancelOrder, findOrder } from "@/lib/orders-store";
+import { readOnchainCancelled } from "@/lib/server-chain";
 
 /**
  * POST /api/orders/[hash]/cancel
  *
- * Off-chain cancel: takes the order out of the public book and records a
- * `cancelled` event for reputation. This is FREE — no transaction, no gas.
+ * Two modes:
  *
- * Caveat: anyone who has cached the maker's signature could in principle
- * still submit it on-chain before our indexer picks up the cancel and
- * blacklists it. For ironclad cancellation the maker calls `cancelOrder()`
- * on the V5 contract (gas + on-chain event). The UI surfaces both options.
+ * 1. Off-chain cancel (default) — takes the order off the public book and
+ *    records a `cancelled` event. Free, no gas. ⚠️ The contract never hears
+ *    about it: the maker's signature stays valid on-chain until expiry, so
+ *    anyone who already holds it can still fill the order (audit OC-01).
+ *    The UI labels this as "hide from the book only".
+ *    Authn: an EIP-712 signature over { orderHash, action: "cancel", chainId }
+ *    that recovers to the order's maker. Body: { signature, chainId }.
+ *    (Only enforced when a database is configured — see STRICT_CANCEL_AUTH.)
  *
- * Authn: the request body must include an EIP-712 signature over a
- *   { orderHash, action: "cancel", chainId } message that recovers to the
- * order's maker. We don't trust client-supplied "I'm the maker" claims.
- *
- * Body shape:
- *   { signature: 0x..., chainId: 11155111 }
- *
- * For the dev/in-memory backend we accept the request as-is to keep local
- * iteration fast — the auth check only fires when DATABASE_URL is set
- * (i.e. production). See `STRICT_CANCEL_AUTH` toggle below if you want to
- * force it locally too.
+ * 2. On-chain mirror — body { onchain: true, chainId }. Called by the UI
+ *    after the maker's `cancelOrder()` transaction is mined. No wallet
+ *    signature is needed: the server reads `cancelled(orderHash)` from the
+ *    DEX itself and only mirrors what the chain already says (only the
+ *    maker can set that flag). Idempotent — a row that is already
+ *    cancelled in the DB returns 200 too.
  */
 
 export const runtime = "nodejs";
@@ -51,7 +50,7 @@ export async function POST(
   { params }: { params: Promise<{ hash: string }> },
 ) {
   const { hash } = await params;
-  if (!hash || !hash.startsWith("0x")) {
+  if (!hash || !hash.startsWith("0x") || hash.length !== 66) {
     return NextResponse.json({ error: "invalid order hash" }, { status: 400 });
   }
 
@@ -59,6 +58,22 @@ export async function POST(
   if (!order) {
     return NextResponse.json({ error: "order not found" }, { status: 404 });
   }
+
+  // The body may legitimately be empty for the dev/in-memory off-chain path.
+  let body: Record<string, unknown> = {};
+  try {
+    const parsed: unknown = await req.json();
+    if (parsed && typeof parsed === "object") {
+      body = parsed as Record<string, unknown>;
+    }
+  } catch {
+    body = {};
+  }
+
+  if (body.onchain === true) {
+    return mirrorOnchainCancel(hash as Hex, order.chainId, order.status, body);
+  }
+
   if (order.status !== "open" && order.status !== "partially-filled") {
     return NextResponse.json(
       { error: `order is ${order.status}; nothing to cancel` },
@@ -67,7 +82,7 @@ export async function POST(
   }
 
   if (STRICT_CANCEL_AUTH) {
-    const auth = await verifyCancelAuth(req, order.order.maker, hash, order.chainId);
+    const auth = await verifyCancelAuth(body, order.order.maker, hash, order.chainId);
     if (!auth.ok) {
       return NextResponse.json({ error: auth.error }, { status: 401 });
     }
@@ -81,26 +96,53 @@ export async function POST(
     );
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, onchainCancelled: false });
+}
+
+async function mirrorOnchainCancel(
+  hash: Hex,
+  chainId: number,
+  status: string,
+  body: Record<string, unknown>,
+) {
+  if (typeof body.chainId !== "number" || body.chainId !== chainId) {
+    return NextResponse.json({ error: "chainId mismatch" }, { status: 400 });
+  }
+  const dexAddress = SCENTDEX_V5_ADDRESS[chainId];
+  if (!dexAddress) {
+    return NextResponse.json(
+      { error: `SCENTDEX V5 not deployed on chainId ${chainId}` },
+      { status: 400 },
+    );
+  }
+
+  const onchain = await readOnchainCancelled(chainId, dexAddress, hash);
+  if (onchain === null) {
+    return NextResponse.json(
+      { error: "could not read on-chain cancel state; retry" },
+      { status: 502 },
+    );
+  }
+  if (!onchain) {
+    // Usually the RPC has not caught up with the just-mined tx yet.
+    return NextResponse.json(
+      { pending: true, error: "order is not cancelled on-chain (yet)" },
+      { status: 409 },
+    );
+  }
+
+  if (status === "open" || status === "partially-filled") {
+    await cancelOrder(hash);
+  }
+  return NextResponse.json({ ok: true, onchainCancelled: true });
 }
 
 async function verifyCancelAuth(
-  req: NextRequest,
+  b: Record<string, unknown>,
   expectedMaker: Address,
   orderHash: string,
   chainId: number,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return { ok: false, error: "invalid json body" };
-  }
-
-  if (!body || typeof body !== "object") {
-    return { ok: false, error: "body must be { signature, chainId }" };
-  }
-  const b = body as Record<string, unknown>;
   if (typeof b.signature !== "string" || !b.signature.startsWith("0x")) {
     return { ok: false, error: "missing signature" };
   }

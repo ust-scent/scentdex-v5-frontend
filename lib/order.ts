@@ -224,12 +224,29 @@ export function buildAmounts({
     return null;
   }
 
+  // The maker's own amount is parsed straight from their input string
+  // (exact). The counter-amount is derived from size × price entirely in
+  // bigint so no float rounding leaks into the on-chain values — critical
+  // for dust-priced pairs like 1 SDT = 0.000005 WETH where the old
+  // `(sizeN * priceN).toFixed(18)` path lost precision in the low wei.
+  const sizeFrac = toFraction(size);
+  const priceFrac = toFraction(unitPrice);
+  if (sizeFrac === null || priceFrac === null || priceFrac.num === 0n) {
+    return null;
+  }
+
   if (side === "sell") {
     // Sell base → user gives base, receives quote.
+    // takerQuoteWei = round( size × price × 10^quoteDecimals )
+    //   size × price = (sizeNum/10^sizeScale) × (priceNum/10^priceScale)
     const makerAmount = safeParse(size, base.decimals);
-    const quoteFloat = sizeN * priceN;
-    const takerAmount = safeParse(quoteFloat.toFixed(18), quote.decimals);
-    if (makerAmount === null || takerAmount === null) return null;
+    const numer =
+      sizeFrac.num * priceFrac.num * pow10(quote.decimals);
+    const denom = pow10(sizeFrac.scale + priceFrac.scale);
+    const takerAmount = roundDiv(numer, denom);
+    if (makerAmount === null || makerAmount === 0n || takerAmount === 0n) {
+      return null;
+    }
     return {
       makerToken: chainAddr(base, chainId),
       takerToken: chainAddr(quote, chainId),
@@ -239,16 +256,48 @@ export function buildAmounts({
   }
 
   // Buy base → user gives quote (budget), receives base.
+  // takerBaseWei = round( budget ÷ price × 10^baseDecimals )
+  //   budget ÷ price = (sizeNum/10^sizeScale) ÷ (priceNum/10^priceScale)
+  //                  = sizeNum × 10^priceScale / (10^sizeScale × priceNum)
   const makerAmount = safeParse(size, quote.decimals);
-  const baseFloat = sizeN / priceN;
-  const takerAmount = safeParse(baseFloat.toFixed(18), base.decimals);
-  if (makerAmount === null || takerAmount === null) return null;
+  const numer = sizeFrac.num * pow10(priceFrac.scale + base.decimals);
+  const denom = pow10(sizeFrac.scale) * priceFrac.num;
+  const takerAmount = roundDiv(numer, denom);
+  if (makerAmount === null || makerAmount === 0n || takerAmount === 0n) {
+    return null;
+  }
   return {
     makerToken: chainAddr(quote, chainId),
     takerToken: chainAddr(base, chainId),
     makerAmount,
     takerAmount,
   };
+}
+
+/** 10^n as a bigint (n >= 0). */
+function pow10(n: number): bigint {
+  return 10n ** BigInt(n);
+}
+
+/** Round-half-up integer division for positive numerator/denominator. */
+function roundDiv(numer: bigint, denom: bigint): bigint {
+  if (denom === 0n) return 0n;
+  return (numer + denom / 2n) / denom;
+}
+
+/**
+ * Parse a non-negative decimal string into an exact fraction
+ * `value = num / 10^scale`. Returns null for empty / malformed / signed /
+ * exponent inputs. "0.000005" → { num: 5n, scale: 6 }.
+ */
+function toFraction(s: string): { num: bigint; scale: number } | null {
+  // Strip grouping commas / whitespace so "1,000,000" parses like "1000000".
+  const trimmed = s.replace(/[,\s]/g, "");
+  if (!trimmed || trimmed === "." || !/^\d*\.?\d*$/.test(trimmed)) return null;
+  const [intPart = "", fracPart = ""] = trimmed.split(".");
+  const digits = intPart + fracPart;
+  if (digits === "") return null;
+  return { num: BigInt(digits), scale: fracPart.length };
 }
 
 function safeParse(value: string, decimals: number): bigint | null {

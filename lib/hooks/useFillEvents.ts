@@ -32,8 +32,11 @@ import { TOKENS, type Pair } from "@/lib/tokens";
  *
  * Implementation notes:
  *
- * - We chunk `getLogs` into 5,000-block ranges to stay under the public
- *   Sepolia RPC limits (publicnode.com caps at 5,000 blocks per call).
+ * - We chunk `getLogs` into 900-block ranges. thirdweb (the mainnet fill
+ *   index RPC) caps a single getLogs at 1,000 blocks and returns
+ *   error -32005 above that; 900 leaves headroom. 7,200 blocks (~24h) →
+ *   8 sequential calls per refetch. A larger chunk (the old 5,000) made
+ *   EVERY call error, so Recent Trades / StatsBar hung on "loading".
  * - Block age is estimated from `latestBlock - log.blockNumber` * 12s
  *   instead of querying `eth_getBlockByNumber` per log. Off by a few
  *   seconds at most; saves N round-trips per refetch.
@@ -62,9 +65,22 @@ type ParsedFillLog = {
 
 export type Fill = {
   txHash: Hash;
+  /**
+   * The filled order's EIP-712 hash. One tx can settle several orders, so
+   * (txHash, orderHash) — not txHash alone — identifies a fill. Used by
+   * `useTradeHistory` to de-duplicate against the off-chain fill log.
+   */
+  orderHash: Hash;
   blockNumber: bigint;
   /** Approximate seconds since the fill (blockNumber-derived, 12s/block). */
   ageSec: number;
+  /**
+   * Absolute unix seconds, stamped at fetch time (`now - ageSec`). Gives the
+   * trade tape one sort basis it can share with the off-chain fill log, whose
+   * rows carry a real recorded timestamp. Stamped inside the query function on
+   * purpose — reading the clock during render is impure.
+   */
+  atSec: number;
   maker: Address;
   taker: Address;
   makerToken: Address;
@@ -93,12 +109,23 @@ export type PairStats = {
 };
 
 const BLOCKS_24H = 7200n;
-const CHUNK = 5000n;
+// thirdweb caps getLogs at 1,000 blocks/call (error -32005 above that).
+const CHUNK = 900n;
 const ORDER_FILLED_EVENT = SCENTDEX_V5_ABI.find(
   (entry) => entry.type === "event" && entry.name === "OrderFilled",
 ) as Extract<(typeof SCENTDEX_V5_ABI)[number], { type: "event" }>;
 
-export function useFillEvents(pair: Pair): PairStats {
+export function useFillEvents(
+  pair: Pair,
+  opts?: {
+    /**
+     * false pauses the query (no getLogs traffic). Used by the
+     * always-mounted FillModal, which only needs fill stats while open.
+     * Defaults to true; existing callers are unaffected.
+     */
+    enabled?: boolean;
+  },
+): PairStats {
   const chainId = useChainId();
   const dexAddress = SCENTDEX_V5_ADDRESS[chainId];
   const publicClient = usePublicClient({ chainId });
@@ -121,15 +148,17 @@ export function useFillEvents(pair: Pair): PairStats {
 
   const { data, isLoading, error } = useQuery<Fill[]>({
     queryKey,
-    enabled: Boolean(
-      dexAddress &&
-        publicClient &&
-        latestBlock &&
-        baseToken &&
-        quoteToken &&
-        baseAddr &&
-        quoteAddr,
-    ),
+    enabled:
+      (opts?.enabled ?? true) &&
+      Boolean(
+        dexAddress &&
+          publicClient &&
+          latestBlock &&
+          baseToken &&
+          quoteToken &&
+          baseAddr &&
+          quoteAddr,
+      ),
     refetchInterval: 15_000,
     refetchOnWindowFocus: true,
     queryFn: async () => {
@@ -153,6 +182,7 @@ export function useFillEvents(pair: Pair): PairStats {
         latestBlock,
       );
 
+      const nowSec = Math.floor(Date.now() / 1000);
       const fills: Fill[] = [];
       for (const log of logs) {
         const mt = log.args.makerToken.toLowerCase();
@@ -187,8 +217,10 @@ export function useFillEvents(pair: Pair): PairStats {
 
         fills.push({
           txHash: log.transactionHash,
+          orderHash: log.args.orderHash,
           blockNumber: log.blockNumber,
           ageSec,
+          atSec: nowSec - ageSec,
           maker: log.args.maker,
           taker: log.args.taker,
           makerToken: log.args.makerToken,
@@ -211,6 +243,55 @@ export function useFillEvents(pair: Pair): PairStats {
     },
   });
 
+  // Persistent last-traded-price fallback from the off-chain book (records
+  // every fill). When the 24h on-chain window has no fills, the StatsBar
+  // price sticks at the last trade instead of blanking to "—" on a quiet
+  // pair. 24h stats (change / volume / high / low) stay window-scoped.
+  const pairKey = `${pair.base}/${pair.quote}`;
+  // `null`, never `undefined`, for "no price available": react-query rejects
+  // an undefined resolution outright ("Query data cannot be undefined") and
+  // logged an error on every poll of a pair that has never traded — which is
+  // the normal state of a freshly listed pair, not a fault. The consumer below
+  // maps null back to undefined for `PairStats.latestPrice`.
+  const { data: lastTradePrice } = useQuery<number | null>({
+    queryKey: ["scentdex.lastPrice", chainId, pairKey],
+    enabled: Boolean(baseToken && quoteToken && baseAddr && quoteAddr),
+    refetchInterval: 30_000,
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/last-price?pair=${encodeURIComponent(pairKey)}&chainId=${chainId}`,
+      );
+      if (!res.ok) return null;
+      const { trade } = (await res.json()) as {
+        trade: {
+          makerToken: string;
+          takerToken: string;
+          makerAmount: string;
+          takerAmount: string;
+        } | null;
+      };
+      if (!trade || !baseToken || !quoteToken || !baseAddr || !quoteAddr) {
+        return null;
+      }
+      const mt = trade.makerToken.toLowerCase();
+      const tt = trade.takerToken.toLowerCase();
+      const makerAmount = BigInt(trade.makerAmount);
+      const takerAmount = BigInt(trade.takerAmount);
+      if (makerAmount === 0n || takerAmount === 0n) return null;
+      if (mt === baseAddr && tt === quoteAddr) {
+        const base = Number(formatUnits(makerAmount, baseToken.decimals));
+        const quote = Number(formatUnits(takerAmount, quoteToken.decimals));
+        return base > 0 ? quote / base : null;
+      }
+      if (mt === quoteAddr && tt === baseAddr) {
+        const base = Number(formatUnits(takerAmount, baseToken.decimals));
+        const quote = Number(formatUnits(makerAmount, quoteToken.decimals));
+        return base > 0 ? quote / base : null;
+      }
+      return null;
+    },
+  });
+
   return useMemo<PairStats>(() => {
     const list = data ?? [];
     if (list.length === 0) {
@@ -218,7 +299,10 @@ export function useFillEvents(pair: Pair): PairStats {
         fills: [],
         loading: isLoading,
         error,
-        latestPrice: undefined,
+        // Persist the last traded price even outside the 24h window. `??`
+        // collapses both "not fetched yet" (undefined) and "no trade on
+        // record" (null) to the absent value PairStats expects.
+        latestPrice: lastTradePrice ?? undefined,
         priceChange24h: undefined,
         volume24h: 0,
         high24h: undefined,
@@ -245,7 +329,7 @@ export function useFillEvents(pair: Pair): PairStats {
       high24h,
       low24h,
     };
-  }, [data, isLoading, error]);
+  }, [data, isLoading, error, lastTradePrice]);
 }
 
 async function fetchFillLogs(
