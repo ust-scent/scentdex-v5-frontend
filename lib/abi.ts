@@ -264,6 +264,26 @@ export const SCENTDEX_V5_ABI = [
     inputs: [{ name: "", type: "bytes32" }],
     outputs: [{ name: "", type: "bool" }],
   },
+  // Price-sanity limits enforced by `_fillOrder` (ScentDexV6.sol
+  // `TakerAmountBelowFloor` / `PriceRatioAboveCap`). Public state getters:
+  //   uint256 public maxPriceRatio;                         (0 = disabled)
+  //   mapping(address => uint256) public minTakerAmount;    (keyed by takerToken)
+  // The order form and POST /api/orders read these so an order the contract
+  // would reject is never signed / stored (lib/price-limits.ts).
+  {
+    type: "function",
+    name: "maxPriceRatio",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "minTakerAmount",
+    stateMutability: "view",
+    inputs: [{ name: "", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
   // Custom errors — required so viem's decodeErrorResult / re-simulated
   // revert paths can map a raw 4-byte selector back to a Solidity error
   // name (e.g. FillExceedsMaker → trade.fillError.alreadyFilled). Without

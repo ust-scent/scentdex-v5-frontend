@@ -50,13 +50,37 @@ export async function postSignedOrder(
     takerSize: string;
   },
 ): Promise<PostedOrder> {
+  const { body, order } = await buildSignedOrderBody(opts);
+  const res = await request.post("/api/orders", { data: body });
+  if (res.status() !== 201) {
+    throw new Error(
+      `POST /api/orders failed: ${res.status()} ${await res.text()}`,
+    );
+  }
+  const json = (await res.json()) as { order: { orderHash: Hex } };
+  return { orderHash: json.order.orderHash, order };
+}
+
+/**
+ * Builds a fully signed POST /api/orders body without sending it, so a spec
+ * can assert on rejections. Amounts are parsed at 18 decimals unless raw
+ * bigint amounts are given.
+ */
+export async function buildSignedOrderBody(opts: {
+  side: "ask" | "bid";
+  makerSize?: string;
+  takerSize?: string;
+  makerAmount?: bigint;
+  takerAmount?: bigint;
+  pair?: string;
+}): Promise<{ body: Record<string, unknown>; order: Order }> {
   const isAsk = opts.side === "ask";
   const order: Order = {
     maker: MAKER.address,
     makerToken: isAsk ? SDT : WETH,
     takerToken: isAsk ? WETH : SDT,
-    makerAmount: parseUnits(opts.makerSize, 18),
-    takerAmount: parseUnits(opts.takerSize, 18),
+    makerAmount: opts.makerAmount ?? parseUnits(opts.makerSize ?? "0", 18),
+    takerAmount: opts.takerAmount ?? parseUnits(opts.takerSize ?? "0", 18),
     expiry: BigInt(Math.floor(Date.now() / 1000) + 24 * 3600),
     nonce: BigInt(Math.floor(Date.now() / 1000)),
     salt: randomSalt(),
@@ -85,8 +109,9 @@ export async function postSignedOrder(
     message: permitSingle as unknown as Record<string, unknown>,
   } as Parameters<typeof MAKER.signTypedData>[0]);
 
-  const res = await request.post("/api/orders", {
-    data: {
+  return {
+    order,
+    body: {
       order: {
         maker: order.maker,
         makerToken: order.makerToken,
@@ -100,17 +125,10 @@ export async function postSignedOrder(
         feeBps: order.feeBps,
       },
       signature,
-      pair: PAIR,
+      pair: opts.pair ?? PAIR,
       chainId: SEPOLIA,
       permitSingle: serialisePermitSingle(permitSingle),
       permitSignature,
     },
-  });
-  if (res.status() !== 201) {
-    throw new Error(
-      `POST /api/orders failed: ${res.status()} ${await res.text()}`,
-    );
-  }
-  const body = (await res.json()) as { order: { orderHash: Hex } };
-  return { orderHash: body.order.orderHash, order };
+  };
 }

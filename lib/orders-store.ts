@@ -169,6 +169,8 @@ export async function insertOrder(o: StoredOrder): Promise<void> {
 export async function listOrders(filter: {
   pair?: string;
   chainId?: number;
+  /** Maker address (any case). Used by the maker's own "My Orders" view. */
+  maker?: string;
   /**
    * When false (default), rows that the keeper-bot has flagged as
    * unfillable (`keeper_hidden = TRUE`) are filtered out, keeping
@@ -186,8 +188,14 @@ export async function listOrders(filter: {
         WHERE ($1::text IS NULL OR pair = $1)
           AND ($2::int  IS NULL OR chain_id = $2)
           AND ($3::bool OR keeper_hidden = FALSE)
+          AND ($4::text IS NULL OR maker = $4)
         ORDER BY created_at DESC`,
-      [filter.pair ?? null, filter.chainId ?? null, includeKeeperHidden],
+      [
+        filter.pair ?? null,
+        filter.chainId ?? null,
+        includeKeeperHidden,
+        filter.maker ? filter.maker.toLowerCase() : null,
+      ],
     );
 
     const rows = result?.rows ?? [];
@@ -225,6 +233,11 @@ export async function listOrders(filter: {
   return all
     .filter((o) => (filter.pair ? o.pair === filter.pair : true))
     .filter((o) => (filter.chainId ? o.chainId === filter.chainId : true))
+    .filter((o) =>
+      filter.maker
+        ? o.order.maker.toLowerCase() === filter.maker.toLowerCase()
+        : true,
+    )
     .map((o) => {
       if (
         (o.status === "open" || o.status === "partially-filled") &&
@@ -242,6 +255,56 @@ export async function listOrders(filter: {
       return o;
     })
     .sort((a, b) => b.createdAt - a.createdAt);
+}
+
+// ---------- public (API) view ---------------------------------------------
+
+/**
+ * What GET /api/orders returns for one row.
+ *
+ * OC-01 (2026-10-11 audit): the maker's order signature and Permit2
+ * signature are what a taker submits to `fillOrder`. An off-chain cancel
+ * only flips our DB status — the contract never hears about it — so
+ * handing those signatures out for a cancelled row let anyone fill an
+ * order the maker believed was gone. Signatures are therefore returned
+ * ONLY while the row is live on the book (open / partially-filled and not
+ * past expiry). Every other row — cancelled, expired, filled — comes back
+ * without them, including under `?includeHidden=true`. History views need
+ * the order terms, never the signatures.
+ *
+ * Signatures already served before this change cannot be recalled; the
+ * maker closes that gap with the on-chain `cancelOrder()` the UI offers.
+ */
+export type PublicOrder = Omit<
+  StoredOrder,
+  "signature" | "permitSingle" | "permitSignature"
+> & {
+  signature?: Hex;
+  permitSingle?: SerialisedPermitSingle;
+  permitSignature?: Hex;
+  /** true when the signatures were withheld because the row is not live. */
+  signatureWithheld?: true;
+};
+
+export function isLiveOrder(o: StoredOrder, nowSec: number): boolean {
+  if (o.status !== "open" && o.status !== "partially-filled") return false;
+  const expiry = Number(o.order.expiry);
+  return !(expiry > 0 && expiry < nowSec);
+}
+
+export function toPublicOrder(o: StoredOrder, nowSec: number): PublicOrder {
+  if (isLiveOrder(o, nowSec)) return { ...o };
+  return {
+    orderHash: o.orderHash,
+    order: o.order,
+    status: o.status,
+    filledMakerAmount: o.filledMakerAmount,
+    filledTakerAmount: o.filledTakerAmount,
+    pair: o.pair,
+    chainId: o.chainId,
+    createdAt: o.createdAt,
+    signatureWithheld: true,
+  };
 }
 
 export async function findOrder(orderHash: string): Promise<StoredOrder | null> {
@@ -429,8 +492,10 @@ export async function listTrades(
  * could in theory submit it on-chain before our indexer marks it cancelled,
  * and the contract would happily fill it (because it doesn't know about our
  * off-chain cancel). For ironclad cancellation the maker must call
- * cancelOrder() on V5 (which costs gas but emits OrderCancelled and prevents
- * any future fill). Surface that affordance in the UI for high-value orders.
+ * cancelOrder() on the DEX (which costs gas but emits OrderCancelled and
+ * prevents any future fill). The My Orders UI offers that as the primary
+ * cancel and labels this off-chain path "hide from book only" (OC-01); GET
+ * /api/orders also stops serving the signatures of cancelled rows.
  */
 export async function cancelOrder(orderHash: string): Promise<boolean> {
   if (isDbAvailable()) {

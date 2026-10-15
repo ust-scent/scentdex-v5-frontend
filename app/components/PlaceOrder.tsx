@@ -24,6 +24,8 @@ import {
   type PermitSingle,
 } from "@/lib/permit2";
 import { useBestPrices } from "@/lib/hooks/useBestPrices";
+import { usePriceLimits } from "@/lib/hooks/usePriceLimits";
+import { checkPriceLimits } from "@/lib/price-limits";
 import {
   readWalletChainId,
   targetChainForPath,
@@ -46,7 +48,7 @@ import {
   useSwitchChain,
 } from "wagmi";
 
-import { PERMIT2_ABI } from "@/lib/abi";
+import { PERMIT2_ABI, SCENTDEX_V5_ABI } from "@/lib/abi";
 import { PERMIT2_ADDRESS } from "@/lib/contracts";
 
 type Side = "buy" | "sell";
@@ -90,6 +92,17 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
   // Permit2 needs to be approved for THAT token before any taker can fill.
   const makerToken = side === "sell" ? baseToken : quoteToken;
   const makerStatus = useTokenStatus(makerToken);
+
+  // Contract price-sanity limits for the token the maker will RECEIVE
+  // (quote on sell, base on buy). An order outside them is never signed:
+  // the contract would reject every fill (PriceRatioAboveCap /
+  // TakerAmountBelowFloor), so it would only sit dead on the book.
+  const takerTokenForLimits = side === "sell" ? quoteToken : baseToken;
+  const priceLimits = usePriceLimits(
+    chainId,
+    dexAddress,
+    takerTokenForLimits.addresses[chainId],
+  );
 
   // Auto-wrap (SDT/WETH test market): when the maker pays in WETH, the user
   // thinks in ETH — if their WETH balance can't cover the order we wrap the
@@ -436,6 +449,50 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
     // two-popup UX since it matches the Uniswap / CoW Swap industry
     // pattern and preserves the per-order security gain.
 
+    // Fresh read of the contract limits at the moment of signing (the hook
+    // value may be up to 60 s old). Refuse to sign when the order is outside
+    // them or when they cannot be read — never fall through to a signature
+    // for an order the contract may reject.
+    if (publicClient) {
+      try {
+        const [maxPriceRatio, minTakerAmount] = await Promise.all([
+          publicClient.readContract({
+            address: dexAddress,
+            abi: SCENTDEX_V5_ABI,
+            functionName: "maxPriceRatio",
+          }),
+          publicClient.readContract({
+            address: dexAddress,
+            abi: SCENTDEX_V5_ABI,
+            functionName: "minTakerAmount",
+            args: [pendingOrder.takerToken],
+          }),
+        ]);
+        const violation = checkPriceLimits(pendingOrder, {
+          maxPriceRatio,
+          minTakerAmount,
+        });
+        if (violation) {
+          setLastResult({
+            ok: false,
+            error:
+              violation === "price-ratio-above-cap"
+                ? t("trade.signModal.ruleRatioFail")
+                : t("trade.signModal.ruleFloorFail"),
+          });
+          setModalOpen(false);
+          priceLimits.refetch();
+          return;
+        }
+      } catch {
+        setLastResult({ ok: false, error: t("trade.signModal.limitsUnavailable") });
+        return;
+      }
+    } else {
+      setLastResult({ ok: false, error: t("trade.signModal.limitsUnavailable") });
+      return;
+    }
+
     try {
       // Read Permit2 allowance.nonce DIRECTLY from RPC (no wagmi cache).
       // The on-chain nonce increments every time _fillOrder calls
@@ -555,9 +612,11 @@ export function PlaceOrder({ pair }: { pair: Pair }) {
           baseToken,
           quoteToken,
           side,
-          // Phase 3.4: read these from the contract.
-          minTakerAmount: undefined,
-          maxPriceRatio: undefined,
+          // Live contract limits (usePriceLimits). While they are loading
+          // or unreadable the modal blocks signing outright.
+          limitsStatus: priceLimits.status,
+          minTakerAmount: priceLimits.limits?.minTakerAmount,
+          maxPriceRatio: priceLimits.limits?.maxPriceRatio,
           // Fat-finger guard: undefined = no market reference existed (the
           // modal omits the check row); null = checked and within ±30%;
           // object = ≥30% off, the check fails → hold-to-sign override.

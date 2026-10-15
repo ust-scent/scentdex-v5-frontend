@@ -157,6 +157,14 @@ export type Dictionary = {
   "trade.myOrders.cancelling": string;
   "trade.myOrders.needsApproval": string;
   "trade.myOrders.needsApprovalTooltip": string;
+  "trade.myOrders.cancelOnchain": string;
+  "trade.myOrders.cancelOnchainHint": string;
+  "trade.myOrders.cancellingOnchain": string;
+  "trade.myOrders.hideOnly": string;
+  "trade.myOrders.hideOnlyHint": string;
+  "trade.myOrders.onchainCancelled": string;
+  "trade.myOrders.onchainNotCancelled": string;
+  "trade.myOrders.onchainNotCancelledTooltip": string;
 
   // Trade page — History
   "trade.history.time": string;
@@ -274,6 +282,10 @@ export type Dictionary = {
   "trade.signModal.phishingChecks": string;
   "trade.signModal.disclosure": string;
   "trade.signModal.checksFailed": string;
+  "trade.signModal.contractLimitFailed": string;
+  "trade.signModal.blockedByContract": string;
+  "trade.signModal.limitsLoading": string;
+  "trade.signModal.limitsUnavailable": string;
   "trade.signModal.cancel": string;
   "trade.signModal.holdToSign": string;
   "trade.signModal.signingOverride": string;
@@ -613,6 +625,17 @@ const en: Dictionary = {
   "trade.myOrders.needsApproval": "Cannot fill",
   "trade.myOrders.needsApprovalTooltip":
     "This order is signed but won't fill right now: either the {symbol} balance has dropped below makerAmount, or the wallet → Permit2 approval has been revoked. Re-approve from the Approved Tokens tab to clear it.",
+  "trade.myOrders.cancelOnchain": "Cancel on-chain",
+  "trade.myOrders.cancelOnchainHint":
+    "Sends cancelOrder() to the DEX contract (gas required). After it confirms, this signature can never be filled by anyone.",
+  "trade.myOrders.cancellingOnchain": "Cancelling on-chain…",
+  "trade.myOrders.hideOnly": "Hide from book only",
+  "trade.myOrders.hideOnlyHint":
+    "Free, but NOT a real cancel: the order leaves our book, yet your signature stays valid on-chain until expiry and anyone who already holds it can still fill it.",
+  "trade.myOrders.onchainCancelled": "Cancelled on-chain",
+  "trade.myOrders.onchainNotCancelled": "Not cancelled on-chain",
+  "trade.myOrders.onchainNotCancelledTooltip":
+    "This order was only hidden from the book. Its signature is still valid on-chain until expiry, so it can still be filled. Cancel it on-chain to make it permanently unfillable.",
 
   // Trade page — History
   "trade.history.time": "Time",
@@ -743,6 +766,12 @@ const en: Dictionary = {
     "Signing this order does not move funds yet. The trade settles only when a taker fills your order on-chain. You can cancel anytime before expiry.",
   "trade.signModal.checksFailed":
     "One or more checks failed. Do not sign unless you understand the risk.",
+  "trade.signModal.contractLimitFailed":
+    "The DEX contract would reject every fill of this order. Change the price or size.",
+  "trade.signModal.blockedByContract": "Cannot sign this order",
+  "trade.signModal.limitsLoading": "Checking the contract's price limits…",
+  "trade.signModal.limitsUnavailable":
+    "Could not read the contract's price limits. Check your connection and try again.",
   "trade.signModal.cancel": "Cancel",
   "trade.signModal.holdToSign": "Hold 3s to sign anyway",
   "trade.signModal.signingOverride": "Signing…",
@@ -755,10 +784,10 @@ const en: Dictionary = {
   "trade.signModal.ruleSelfDetail": "wallet {wallet} ≠ maker {maker}",
   "trade.signModal.ruleFloorOk": "Taker amount is above the safety floor",
   "trade.signModal.ruleFloorFail":
-    "Taker amount is below the safety floor (likely a bait order)",
+    "Amount received is below the contract's minimum — the contract would reject every fill",
   "trade.signModal.ruleRatioOk": "Price ratio is within safe bounds",
   "trade.signModal.ruleRatioFail":
-    "Price ratio exceeds the safety cap (extreme price)",
+    "Price is outside the contract's price cap — the contract would reject every fill",
   "trade.signModal.ruleDeviationOk":
     "Price is within 30% of the market reference",
   "trade.signModal.ruleDeviationFailAbove":
@@ -1122,6 +1151,17 @@ const ja: Dictionary = {
   "trade.myOrders.needsApproval": "約定不可",
   "trade.myOrders.needsApprovalTooltip":
     "署名済みですが現状約定できません: {symbol} の残高が makerAmount を下回っているか、ウォレット → Permit2 の承認が解除されています。「承認済みトークン」タブから再承認してください。",
+  "trade.myOrders.cancelOnchain": "オンチェーンで取消",
+  "trade.myOrders.cancelOnchainHint":
+    "DEX コントラクトに cancelOrder() を送ります（ガス代が必要）。確定後は、この署名で誰も約定できなくなります。",
+  "trade.myOrders.cancellingOnchain": "オンチェーン取消中…",
+  "trade.myOrders.hideOnly": "板から隠すだけ",
+  "trade.myOrders.hideOnlyHint":
+    "無料ですが本当の取消ではありません。板からは消えますが、署名は期限までオンチェーンで有効なままで、署名を持っている人は約定できます。",
+  "trade.myOrders.onchainCancelled": "オンチェーン取消済み",
+  "trade.myOrders.onchainNotCancelled": "オンチェーン未取消",
+  "trade.myOrders.onchainNotCancelledTooltip":
+    "この注文は板から隠しただけです。署名は期限までオンチェーンで有効なので、まだ約定される可能性があります。オンチェーンで取り消すと、二度と約定できなくなります。",
 
   // Trade page — History
   "trade.history.time": "時刻",
@@ -1250,6 +1290,12 @@ const ja: Dictionary = {
     "署名してもこの時点では資金は動きません。テイカーがオンチェーンで約定したときに初めて取引が成立します。有効期限内であればいつでもキャンセル可能です。",
   "trade.signModal.checksFailed":
     "1 つ以上のチェックに失敗しています。リスクを理解していない場合は署名しないでください。",
+  "trade.signModal.contractLimitFailed":
+    "この注文は DEX コントラクトがすべての約定を拒否します。価格か数量を変えてください。",
+  "trade.signModal.blockedByContract": "この注文には署名できません",
+  "trade.signModal.limitsLoading": "コントラクトの価格上限を確認しています…",
+  "trade.signModal.limitsUnavailable":
+    "コントラクトの価格上限を読み込めませんでした。接続を確認して再度お試しください。",
   "trade.signModal.cancel": "キャンセル",
   "trade.signModal.holdToSign": "3 秒長押しで署名",
   "trade.signModal.signingOverride": "署名中…",
@@ -1262,10 +1308,10 @@ const ja: Dictionary = {
   "trade.signModal.ruleSelfDetail": "ウォレット {wallet} ≠ メイカー {maker}",
   "trade.signModal.ruleFloorOk": "テイカー額は安全フロアを上回っています",
   "trade.signModal.ruleFloorFail":
-    "テイカー額が安全フロアを下回っています（おとり注文の可能性）",
+    "受け取る数量がコントラクトの最低額を下回っています（約定はすべて拒否されます）",
   "trade.signModal.ruleRatioOk": "価格比は安全範囲内です",
   "trade.signModal.ruleRatioFail":
-    "価格比が安全上限を超えています（異常価格）",
+    "価格がコントラクトの価格上限の範囲外です（約定はすべて拒否されます）",
   "trade.signModal.ruleDeviationOk": "価格は基準価格の±30%以内です",
   "trade.signModal.ruleDeviationFailAbove":
     "価格が基準価格より {pct}% 高くなっています — 入力ミスにご注意",

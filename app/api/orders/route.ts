@@ -12,15 +12,20 @@ import type { SerialisedPermitSingle } from "@/lib/permit2";
 import {
   insertOrder,
   listOrders,
+  toPublicOrder,
   type SerialisedOrder,
   type StoredOrder,
 } from "@/lib/orders-store";
+import { checkPriceLimits } from "@/lib/price-limits";
+import { readPriceLimits } from "@/lib/server-chain";
 
 /**
  * SCENTDEX V5 — Off-chain order book API
  *
  * POST /api/orders   — accept a maker's signed order
- * GET  /api/orders   — list orders, optionally filtered by ?pair= and ?chainId=
+ * GET  /api/orders   — list orders, optionally filtered by ?pair=, ?chainId=
+ *                      and ?maker=. Signatures are returned only for rows
+ *                      that are live on the book (see toPublicOrder, OC-01).
  *
  * Storage moved to `lib/orders-store.ts` in Phase 3.5: Postgres when
  * DATABASE_URL is set, in-memory Map otherwise. Cancel and reputation
@@ -46,8 +51,17 @@ export async function GET(req: NextRequest) {
   // debug surfaces. Default omits them so the public board stays clean.
   const includeKeeperHidden =
     url.searchParams.get("includeHidden") === "true";
+  const makerParam = url.searchParams.get("maker");
+  if (makerParam !== null && !isAddress(makerParam)) {
+    return NextResponse.json({ error: "maker not a valid address" }, { status: 400 });
+  }
+  const maker = makerParam ?? undefined;
 
-  const orders = await listOrders({ pair, chainId, includeKeeperHidden });
+  const rows = await listOrders({ pair, chainId, maker, includeKeeperHidden });
+  // OC-01: never hand out signatures for rows that are not live (cancelled /
+  // expired / filled) — not even with ?includeHidden=true.
+  const now = Math.floor(Date.now() / 1000);
+  const orders = rows.map((o) => toPublicOrder(o, now));
   return NextResponse.json({ orders, count: orders.length });
 }
 
@@ -116,6 +130,44 @@ export async function POST(req: NextRequest) {
       },
       { status: 400 },
     );
+  }
+
+  if (reified.makerAmount <= 0n || reified.takerAmount <= 0n) {
+    return NextResponse.json(
+      { error: "makerAmount and takerAmount must be > 0" },
+      { status: 400 },
+    );
+  }
+
+  // Same price-sanity limits the contract enforces at fill time
+  // (maxPriceRatio / minTakerAmount[takerToken]). An order outside them can
+  // never be filled, so it does not belong on the book. If the limits cannot
+  // be read at all we fail open — the contract still refuses the fill.
+  const limits = await readPriceLimits(chainId, dexAddress, reified.takerToken);
+  if (limits) {
+    const violation = checkPriceLimits(reified, limits);
+    if (violation === "price-ratio-above-cap") {
+      return NextResponse.json(
+        {
+          error:
+            "price ratio exceeds the contract cap (maxPriceRatio); this order could never be filled",
+          code: violation,
+          maxPriceRatio: limits.maxPriceRatio.toString(),
+        },
+        { status: 400 },
+      );
+    }
+    if (violation === "taker-amount-below-floor") {
+      return NextResponse.json(
+        {
+          error:
+            "takerAmount is below the contract floor (minTakerAmount); this order could never be filled",
+          code: violation,
+          minTakerAmount: limits.minTakerAmount.toString(),
+        },
+        { status: 400 },
+      );
+    }
   }
 
   const orderHash: Hex = hashOrder(reified, chainId, dexAddress);
