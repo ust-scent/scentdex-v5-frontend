@@ -8,3 +8,6 @@ description = "Public, well-known test material only"
 # throwaway orders (tests/e2e/support/orders.ts). These keys are published in
 # the Hardhat docs and hold no real funds.
 paths = ['''^tests/e2e/support/orders\.ts$''']
+# localStorage key name in app/components/OnboardingBanner.tsx, flagged by
+# generic-api-key. It is a UI preference key, not a credential.
+regexes = ['''scentdex\.banner\.dismissed\.v1''']
