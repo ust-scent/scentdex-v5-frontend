@@ -1,9 +1,10 @@
 # ScentDEX frontend CI — no repository secrets are used anywhere in this file.
-# Blocking:  npm ci → tsc --noEmit → next build → hermetic Playwright E2E → secret scan
+# Blocking: npm ci → tsc --noEmit → next build → hermetic Playwright E2E → secret scan
+# Production dependency audit also blocks high/critical advisories.
 # Report-only (warning, does not fail the run):
 #   - eslint: 18 pre-existing react-hooks errors on main (2026-10-11). Make it blocking
 #     once /ust-dex-frontend clears them (delete `continue-on-error`).
-#   - npm audit: high/critical advisories are surfaced as warnings.
+#   - Full npm audit (including devDependencies): high/critical advisories are warnings.
 # The E2E suite is hermetic by design (playwright.config.ts): DATABASE_URL/POSTGRES_URL
 # are forced empty (in-memory book, never Neon) and every non-localhost browser request
 # is aborted. It never touches production data or a wallet with funds.
@@ -58,7 +59,7 @@ jobs:
           retention-days: 7
 
   audit:
-    name: npm audit (warn on high+)
+    name: npm audit (block production high+)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -66,11 +67,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
-      - name: npm audit
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
+      - name: Full dependency audit (report-only)
+        if: always()
         run: |
-          if ! npm audit --omit=dev --audit-level=high; then
-            echo "::warning title=npm audit::high or critical advisories in production dependencies (see log)"
-          fi
           if ! npm audit --audit-level=high > /dev/null; then
             echo "::warning title=npm audit (incl. dev)::high or critical advisories including devDependencies"
           fi
