@@ -1,13 +1,73 @@
 import type { Address } from "viem";
 
 export type Token = {
-  symbol: "SCENT" | "JPYC" | "USDT" | "SDO";
+  symbol: "SCENT" | "JPYC" | "USDT" | "SDO" | "SDT" | "WETH" | "SDT-TEST" | "WETH-TEST";
   name: string;
   decimals: number;
   /** Per-chain ERC-20 address. Mainnet = production; Sepolia = MockERC20. */
   addresses: Record<number, Address | undefined>;
   /** Tailwind class for the avatar circle in Permit2 cards / lists. */
   accentClass: string;
+  /**
+   * True for WETH9-style wrapped-native tokens (deposit/withdraw). Drives
+   * the auto-wrap UX: PlaceOrder / FillModal insert an ETH→token deposit
+   * leg when the user's balance is short.
+   */
+  wrapsNative?: boolean;
+  /**
+   * User-facing label shown in the UI INSTEAD of `symbol`. `symbol` stays the
+   * internal identifier (PAIR_CONFIG keys, pairKey, feeSide matching, the
+   * `/api/orders?pair=` param) and must never change. Only rendering goes
+   * through `symbolLabel()`. Used to surface WETH-TEST as "WETH-TEST（ETH）"
+   * so first-time users see it is the same asset as ETH. Undefined for
+   * production tokens → `symbolLabel` returns `symbol` unchanged (no /trade
+   * regression).
+   */
+  displaySymbol?: string;
+  /**
+   * Official links published by the token's ISSUER — not by SCENTDEX. Rendered
+   * in the StatsBar for the ACTIVE PAIR'S BASE TOKEN only, so a listing's links
+   * can never bleed onto another listing's tab (e.g. Seven DAO's links must not
+   * appear while the user is looking at SCENT/JPYC). Undefined for tokens whose
+   * issuer has published nothing — the UI then renders no link element at all.
+   */
+  links?: TokenLinks;
+  /**
+   * Fixed decimal places used when rendering a MONEY TOTAL denominated in
+   * this token (the order-book depth sums). Deliberately separate from
+   * `decimals`, which is the on-chain unit scale and says nothing about how
+   * the unit is quoted: JPYC is an 18-decimal ERC-20 but a yen-pegged unit
+   * nobody prices in fractions, so its totals read best at 0 dp, while WETH
+   * totals need 4 to stay meaningful at all.
+   *
+   * Unset → `DEFAULT_DISPLAY_DECIMALS`, so a newly listed token renders
+   * sensibly with no code change and only genuinely unusual units need a
+   * line here.
+   */
+  displayDecimals?: number;
+};
+
+/**
+ * Display precision for a money total in a token with no explicit
+ * `displayDecimals`. 2 dp suits the stablecoin-style units that dominate the
+ * quote side (USDT, SCENT).
+ */
+export const DEFAULT_DISPLAY_DECIMALS = 2;
+
+/** Fixed decimal places for rendering a total denominated in `symbol`. */
+export function displayDecimalsFor(symbol: Token["symbol"] | string): number {
+  return (
+    TOKENS.find((t) => t.symbol === symbol)?.displayDecimals ??
+    DEFAULT_DISPLAY_DECIMALS
+  );
+}
+
+/** Issuer-published destinations for a listed token. All optional. */
+export type TokenLinks = {
+  /** Issuer's own website. */
+  website?: string;
+  /** Issuer's X (Twitter) profile. */
+  x?: string;
 };
 
 /**
@@ -47,6 +107,10 @@ export const TOKENS: Token[] = [
       11155111: "0x0174899c27d8315294f230aC7f72913718065CC2",
     },
     accentClass: "bg-blue-500",
+    // Yen-pegged: totals are read as yen, and yen has no working subunit.
+    // "12,345,678 JPYC" is the number a JP user expects; "12,345,678.00"
+    // just adds noise to the widest total on the board.
+    displayDecimals: 0,
   },
   {
     symbol: "USDT",
@@ -69,7 +133,121 @@ export const TOKENS: Token[] = [
     },
     accentClass: "bg-fuchsia-500",
   },
+  // ---- SDT/WETH production tokens (mainnet, /sdt pinned route) ----------
+  // Listed on mainnet V6 2026-07-05 (setToken + executeSetPair, feeSide=SDT
+  // 10%). NOT in PAIRS yet — the pair is reachable only via the pinned /sdt
+  // route until Alex opens the /trade tab at official release.
+  {
+    symbol: "SDT",
+    name: "Seven DAO Token",
+    decimals: 18,
+    addresses: {
+      1: "0x46031C24f0021efeBaC763A2E342b3ec4Ca3a7F9",
+      11155111: undefined,
+    },
+    accentClass: "bg-sky-500",
+    // Issuer-published destinations (Alex 2026-07-29). Scoped to this token
+    // entry on purpose: StatsBar renders links for the active pair's BASE
+    // token, so these surface on SDT/WETH and nowhere else.
+    links: {
+      website: "https://sevendaotoken.com/",
+      x: "https://x.com/sevendaotoken",
+    },
+  },
+  {
+    symbol: "WETH",
+    name: "Wrapped Ether",
+    decimals: 18,
+    addresses: {
+      // Canonical WETH9. wrapsNative drives the auto-wrap UX: buyers hold
+      // plain ETH; the order flow deposits the shortfall automatically.
+      1: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      11155111: undefined,
+    },
+    accentClass: "bg-indigo-400",
+    wrapsNative: true,
+    // ETH-denominated depth is small in absolute terms — 2 dp would collapse
+    // a genuine 0.0431 ETH of resting bids to "0.04" and a thin book to
+    // "0.00", which reads as an empty board rather than a thin one.
+    displayDecimals: 4,
+  },
+  // ---- SDT/WETH test market (Sepolia only, /sdttest route) -------------
+  // Both tokens deliberately have NO mainnet address: pairsForChain(1) can
+  // never surface them, so the production pair list is untouched. Mainnet
+  // listing is frozen until external audit + legal docs complete.
+  {
+    symbol: "SDT-TEST",
+    name: "Seven DAO Token (TEST)",
+    decimals: 18,
+    addresses: {
+      1: undefined,
+      // MockSDT from the sdttest Sepolia bring-up. Env-gated like the DEX
+      // address so the token simply "doesn't exist" until the deploy lands.
+      11155111: process.env.NEXT_PUBLIC_SDTTEST_SDT_ADDRESS as
+        | Address
+        | undefined,
+    },
+    accentClass: "bg-sky-500",
+    // Shown in the UI as the production label "SDT" (internal symbol stays
+    // "SDT-TEST"). Keeps the test build's UI identical to mainnet so no
+    // source edit is needed at cutover.
+    displaySymbol: "SDT",
+    // Mirrors the mainnet SDT entry for the same reason as displaySymbol:
+    // /sdttest must render exactly what mainnet renders.
+    links: {
+      website: "https://sevendaotoken.com/",
+      x: "https://x.com/sevendaotoken",
+    },
+  },
+  {
+    symbol: "WETH-TEST",
+    name: "Wrapped Ether (TEST)",
+    decimals: 18,
+    addresses: {
+      1: undefined,
+      // MockWETH from the sdttest Sepolia bring-up: WETH9-compatible
+      // deposit/withdraw (auto-wrap UX unchanged) plus an open faucet mint
+      // so test balances aren't capped by scarce Sepolia ETH. Env-gated
+      // like the DEX + SDT addresses.
+      11155111: process.env.NEXT_PUBLIC_SDTTEST_WETH_ADDRESS as
+        | Address
+        | undefined,
+    },
+    accentClass: "bg-indigo-400",
+    wrapsNative: true,
+    // Mirrors the mainnet WETH entry: /sdttest must render exactly what
+    // mainnet renders, depth totals included.
+    displayDecimals: 4,
+    // Surfaced in the UI as the production label "WETH（ETH）" so first-time
+    // users understand it is the same asset as ETH (auto-wrapped) and the
+    // test build matches mainnet with no post-test source edit. Internal
+    // `symbol` stays "WETH-TEST".
+    displaySymbol: "WETH（ETH）",
+  },
 ];
+
+/**
+ * User-facing label for a token symbol. Returns the token's `displaySymbol`
+ * when set, otherwise the symbol itself. Render sites must call this; internal
+ * logic (pair keys, feeSide, API params) keeps using the raw `symbol`.
+ */
+export function symbolLabel(symbol: Token["symbol"] | string): string {
+  return TOKENS.find((t) => t.symbol === symbol)?.displaySymbol ?? symbol;
+}
+
+/**
+ * Issuer links for a token symbol, or undefined when the issuer has published
+ * none. Callers must render nothing (not an empty container) on undefined —
+ * an empty links row on a pair whose issuer published nothing reads as
+ * "SCENTDEX has no links", which is a different and wrong claim.
+ */
+export function tokenLinks(
+  symbol: Token["symbol"] | string,
+): TokenLinks | undefined {
+  const links = TOKENS.find((t) => t.symbol === symbol)?.links;
+  if (!links) return undefined;
+  return links.website || links.x ? links : undefined;
+}
 
 export type Pair = {
   base: Token["symbol"];
@@ -82,6 +260,11 @@ export type Pair = {
  * the current chain is filtered out (e.g. SDO pairs disappear on mainnet).
  */
 export const PAIRS: Pair[] = [
+  // SDT/WETH — mainnet flagship listing (V6 bring-up 2026-07-05). Mainnet-only:
+  // both tokens have no Sepolia address, so `pairsForChain` drops it on testnet.
+  // First entry so it is the default /trade tab (see `SDT_MAINNET_PAIR` below —
+  // this IS the official-release cutover: one PAIRS line, /sdt now redirects).
+  { base: "SDT", quote: "WETH" },
   { base: "SCENT", quote: "JPYC" },
   { base: "SCENT", quote: "USDT" },
   { base: "SDO", quote: "USDT" },
@@ -122,24 +305,53 @@ export const PAIR_CONFIG: Record<number, Record<string, PairFeeConfig>> = {
   1: {
     "SCENT/JPYC": { feeBps: 1000, feeSide: "SCENT" },
     "SCENT/USDT": { feeBps: 1000, feeSide: "SCENT" },
+    // Mainnet V6 bring-up 2026-07-05: announceSetPair(SDT, WETH, true, SDT,
+    // 1000) — the SDT seller pays 10%, carved in WETH from their proceeds.
+    "SDT/WETH": { feeBps: 1000, feeSide: "SDT" },
   },
   11155111: {
     "SCENT/JPYC": { feeBps: 1000, feeSide: "SCENT" },
     "SCENT/USDT": { feeBps: 1000, feeSide: "SCENT" },
     "SDO/USDT": { feeBps: 2000, feeSide: "SDO" },
     "SDO/SCENT": { feeBps: 2000, feeSide: "SDO" },
+    // SDT listing rehearsal (ADR-0008): the SDT SELLER pays 10%, carved in
+    // WETH from their proceeds. Buyers of SDT pay no fee. Must match the
+    // announceSetPair(SDT, WETH, true, SDT, 1000) call in the bring-up script.
+    "SDT-TEST/WETH-TEST": { feeBps: 1000, feeSide: "SDT-TEST" },
   },
 };
+
+/**
+ * The pinned pair for the /sdttest route. Kept OUT of `PAIRS` on purpose —
+ * the default pair list (and therefore PairTabs on /trade) must not change;
+ * the test market is only reachable via its own page.
+ */
+export const SDTTEST_PAIR: Pair = { base: "SDT-TEST", quote: "WETH-TEST" };
+
+/**
+ * The pinned pair for the /sdt route (mainnet, real SDT + WETH9). Kept OUT
+ * of `PAIRS` until official release — cutover is: add this pair to PAIRS
+ * (one line, the /trade tab appears) and delete the /sdt route.
+ */
+export const SDT_MAINNET_PAIR: Pair = { base: "SDT", quote: "WETH" };
 
 export function pairKey(pair: Pair): string {
   return `${pair.base}/${pair.quote}`;
 }
 
 export function feeConfig(pair: Pair, chainId: number): PairFeeConfig {
-  return (
-    PAIR_CONFIG[chainId]?.[pairKey(pair)] ?? {
-      feeBps: 30,
-      feeSide: pair.base,
-    }
-  );
+  const key = pairKey(pair);
+  // Exact (chain, pair) hit — the normal path.
+  const onChain = PAIR_CONFIG[chainId]?.[key];
+  if (onChain) return onChain;
+  // Fall back to the same pair on ANY configured chain before the 30bps
+  // default. This keeps the fee preview correct for a pair that is only
+  // configured on one chain (e.g. the Sepolia-only SDT-TEST/WETH-TEST test
+  // market) even when useChainId() reports the wagmi default chain because
+  // no wallet is connected yet. Production pairs are configured identically
+  // across chains, so this never changes their displayed fee.
+  for (const chainCfg of Object.values(PAIR_CONFIG)) {
+    if (chainCfg[key]) return chainCfg[key];
+  }
+  return { feeBps: 30, feeSide: pair.base };
 }

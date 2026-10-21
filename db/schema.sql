@@ -49,11 +49,27 @@ ALTER TABLE orders
   ADD COLUMN IF NOT EXISTS permit_single_json JSONB,
   ADD COLUMN IF NOT EXISTS permit_signature   TEXT;
 
+-- Keeper-bot flags (P1, 2026-05-16). A read-only off-chain daemon rescans
+-- every open / partially-filled order on a 30 s cadence and re-checks
+-- each fillability precondition against mainnet. When any precondition
+-- fails (expired, fully filled on-chain, cancelled, maker balance /
+-- Permit2 allowance dropped, Permit2 nonce consumed by an unrelated tx),
+-- the row gets `keeper_hidden=TRUE` plus a reason code and the public
+-- /api/orders GET filters it out by default — keeping the order book
+-- clean without any on-chain action by the bot.
+ALTER TABLE orders
+  ADD COLUMN IF NOT EXISTS keeper_hidden     BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS keeper_reason     TEXT,
+  ADD COLUMN IF NOT EXISTS keeper_checked_at TIMESTAMPTZ;
+
 CREATE INDEX IF NOT EXISTS orders_pair_status_idx
   ON orders (pair, status);
 
 CREATE INDEX IF NOT EXISTS orders_maker_idx
   ON orders (maker);
+
+CREATE INDEX IF NOT EXISTS orders_keeper_hidden_idx
+  ON orders (keeper_hidden);
 
 -- Append-only audit log. One row per state transition.
 -- event_type values:

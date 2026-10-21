@@ -56,3 +56,79 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.14);
 }
+
+/* 2026-05-16: temporarily hide every wallet option in the RainbowKit
+ * Connect modal except MetaMask. Pure CSS — no wagmi config change —
+ * so other wallets can be brought back simply by deleting this block.
+ * `[data-testid^="rk-wallet-option-"]` matches all wallet buttons that
+ * RainbowKit injects into the modal; the `:not(...)` carve-out keeps
+ * the MetaMask one visible.
+ * 2026-07-24: allow-list extended to Phantom and Rabby per Alex's
+ * decision. Each wallet needs BOTH testid variants: RainbowKit renders
+ * the explicit wallet-list id (`phantom`, `rabby`, `metaMask`) when the
+ * extension is absent, but the EIP-6963 rdns id (`app.phantom`,
+ * `io.rabby`, `io.metamask`) when the installed extension announces
+ * itself and wins the dedupe. Every other wallet (Coinbase, Rainbow,
+ * WalletConnect, generic injected, …) stays hidden — this is NOT a full
+ * unhide; the reduced-surface policy from 2026-05-16 still stands. */
+[data-testid^="rk-wallet-option-"]:not(
+    [data-testid="rk-wallet-option-metaMask"],
+    [data-testid="rk-wallet-option-io.metamask"],
+    [data-testid="rk-wallet-option-phantom"],
+    [data-testid="rk-wallet-option-app.phantom"],
+    [data-testid="rk-wallet-option-rabby"],
+    [data-testid="rk-wallet-option-io.rabby"]
+  ) {
+  display: none !important;
+}
+
+/* Print rules for legal pages: hide the app chrome (header, footer, banner,
+ * connect button, language toolbar) and render the document body in a clean
+ * single-column page-break friendly layout. */
+@media print {
+  html,
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  header,
+  footer,
+  .legal-doc-toolbar,
+  [role="dialog"],
+  [role="region"][aria-label="Cookie notice"] {
+    display: none !important;
+  }
+  .legal-doc {
+    max-width: none;
+    color: #000000;
+  }
+  .legal-doc p,
+  .legal-doc li,
+  .legal-doc td,
+  .legal-doc th {
+    color: #1f1f1f !important;
+  }
+  .legal-doc a {
+    color: #0033cc !important;
+  }
+  .legal-doc code {
+    background: #f4f4f4 !important;
+    color: #1f1f1f !important;
+    border-color: #cccccc !important;
+  }
+  .legal-doc table,
+  .legal-doc th,
+  .legal-doc td {
+    border-color: #cccccc !important;
+  }
+  .legal-doc h1,
+  .legal-doc h2,
+  .legal-doc h3,
+  .legal-doc h4 {
+    color: #000000 !important;
+    page-break-after: avoid;
+  }
+  .legal-doc table {
+    page-break-inside: avoid;
+  }
+}

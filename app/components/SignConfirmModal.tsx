@@ -4,9 +4,11 @@ import { formatUnits, type Address } from "viem";
 import { useEffect, useMemo, useState } from "react";
 
 import { SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
+import { formatPrice } from "@/lib/format-price";
 import { useTranslator } from "@/lib/locale-context";
 import type { Order } from "@/lib/order";
-import type { Token } from "@/lib/tokens";
+import { belowTakerFloor, exceedsPriceCap } from "@/lib/price-limits";
+import { symbolLabel, type Token } from "@/lib/tokens";
 
 /**
  * Sign Confirmation modal — the load-bearing phishing-defence layer per
@@ -17,6 +19,11 @@ import type { Token } from "@/lib/tokens";
  * rule fails; a held-3-seconds "Sign anyway" override is offered for the
  * cases users may want to push through (e.g. testing).
  *
+ * Exception — the contract limits (Floor, Ratio) are HARD: the contract
+ * reverts every fill of such an order, so there is nothing to "push
+ * through". When either fails, or the limits are still loading / could not
+ * be read, the sign button is disabled with no override.
+ *
  * The four rules:
  *   1. Domain   — verifyingContract matches the official SCENTDEX V5 deploy on this chain
  *   2. Floor    — order.takerAmount >= minTakerAmount[takerToken]
@@ -24,7 +31,14 @@ import type { Token } from "@/lib/tokens";
  *   4. Self     — order.maker matches the connected wallet (no surprise signer)
  */
 
-type RuleResult = { id: string; label: string; ok: boolean; detail?: string };
+type RuleResult = {
+  id: string;
+  label: string;
+  ok: boolean;
+  detail?: string;
+  /** Hard rules cannot be overridden with hold-to-sign. */
+  hard?: boolean;
+};
 
 export type SignConfirmContext = {
   chainId: number;
@@ -35,8 +49,22 @@ export type SignConfirmContext = {
   side: "buy" | "sell";
   /** Bigint min taker amount for the takerToken on the connected chain. */
   minTakerAmount?: bigint;
-  /** Bigint max price ratio (1e6 default). 0 means inactive. */
+  /** Contract maxPriceRatio(). 0 means the cap is disabled on-chain. */
   maxPriceRatio?: bigint;
+  /**
+   * Whether minTakerAmount / maxPriceRatio were read from the contract.
+   * Anything but "ready" blocks signing (the order cannot be verified).
+   * Omitted → legacy callers; the two rules are evaluated as given.
+   */
+  limitsStatus?: "loading" | "error" | "ready";
+  /**
+   * Fat-finger guard (rule 5). undefined → no market reference existed, the
+   * rule row is omitted. null → checked, price within ±30% of reference.
+   * Object → deviation ≥30%: the rule fails, which routes the footer into
+   * the hold-3s "Sign anyway" override — the explicit "yes, I really mean
+   * this price" confirmation.
+   */
+  priceDeviation?: { pct: number; above: boolean; refPrice: number } | null;
 };
 
 export function SignConfirmModal({
@@ -55,6 +83,7 @@ export function SignConfirmModal({
   const t = useTranslator();
   const rules = useMemo(() => (ctx ? evaluateRules(ctx, t) : []), [ctx, t]);
   const allOk = rules.every((r) => r.ok);
+  const hardFail = rules.some((r) => !r.ok && r.hard);
   const [holdMs, setHoldMs] = useState(0);
 
   useEffect(() => {
@@ -107,7 +136,11 @@ export function SignConfirmModal({
         </div>
 
         <footer className="px-5 py-4 border-t border-line bg-bg/40 flex flex-col gap-2">
-          {!allOk ? (
+          {hardFail ? (
+            <div className="px-3 py-2 rounded-md bg-sell/10 border border-sell/30 text-[12px] text-sell">
+              {t("trade.signModal.contractLimitFailed")}
+            </div>
+          ) : !allOk ? (
             <div className="px-3 py-2 rounded-md bg-sell/10 border border-sell/30 text-[12px] text-sell">
               {t("trade.signModal.checksFailed")}
             </div>
@@ -122,6 +155,7 @@ export function SignConfirmModal({
             </button>
             <SignButton
               allOk={allOk}
+              hardFail={hardFail}
               signing={!!signing}
               holdMs={holdMs}
               setHoldMs={setHoldMs}
@@ -140,6 +174,9 @@ function Summary({ ctx }: { ctx: SignConfirmContext }) {
   const isSellingBase = side === "sell";
   const giveToken = isSellingBase ? baseToken : quoteToken;
   const getToken = isSellingBase ? quoteToken : baseToken;
+  // Display-only labels (WETH-TEST → "WETH-TEST（ETH）").
+  const giveSym = symbolLabel(giveToken.symbol);
+  const getSym = symbolLabel(getToken.symbol);
   const giveAmount = order.makerAmount;
 
   // fee comes off the taker payment when feeSide == makerToken (Case A)
@@ -165,29 +202,29 @@ function Summary({ ctx }: { ctx: SignConfirmContext }) {
         <span className="font-mono tnum text-fg">
           {fmt(giveAmount, giveToken.decimals)}
         </span>{" "}
-        {giveToken.symbol}{" "}
+        {giveSym}{" "}
         <span className="text-fg-faint">{t("trade.signModal.forAtLeast")}</span>{" "}
         <span className="font-mono tnum text-fg">
           {fmt(youReceive, getToken.decimals)}
         </span>{" "}
-        {getToken.symbol}
+        {getSym}
       </div>
 
       <dl className="grid grid-cols-[140px_1fr] gap-y-2 text-[13px]">
         <dt className="text-fg-faint">{t("trade.signModal.youGive")}</dt>
         <dd className="font-mono tnum">
-          {fmt(giveAmount, giveToken.decimals)} {giveToken.symbol}
+          {fmt(giveAmount, giveToken.decimals)} {giveSym}
         </dd>
 
         <dt className="text-fg-faint">{t("trade.signModal.youReceive")}</dt>
         <dd className="font-mono tnum">
-          {fmt(youReceive, getToken.decimals)} {getToken.symbol}{" "}
+          {fmt(youReceive, getToken.decimals)} {getSym}{" "}
           <span className="text-fg-faint">{t("trade.signModal.afterFee")}</span>
         </dd>
 
         <dt className="text-fg-faint">{t("trade.signModal.protocolFee")}</dt>
         <dd className="font-mono tnum">
-          {fmt(fee, getToken.decimals)} {getToken.symbol}{" "}
+          {fmt(fee, getToken.decimals)} {getSym}{" "}
           <span className="text-fg-faint">
             ({(order.feeBps / 100).toFixed(2)}%)
           </span>
@@ -237,18 +274,31 @@ function RuleRow({ rule }: { rule: RuleResult }) {
 
 function SignButton({
   allOk,
+  hardFail,
   signing,
   holdMs,
   setHoldMs,
   onConfirm,
 }: {
   allOk: boolean;
+  hardFail: boolean;
   signing: boolean;
   holdMs: number;
   setHoldMs: (n: number) => void;
   onConfirm: () => void;
 }) {
   const t = useTranslator();
+  // Contract limit failed (or unverifiable): no way to sign.
+  if (hardFail) {
+    return (
+      <button
+        disabled
+        className="flex-1 py-2.5 rounded-md bg-white/[0.04] text-fg-faint font-medium text-[13px] cursor-not-allowed"
+      >
+        {t("trade.signModal.blockedByContract")}
+      </button>
+    );
+  }
   // When all rules pass: simple click. When any rule fails: hold-3s override.
   if (allOk) {
     return (
@@ -317,19 +367,35 @@ function evaluateRules(
       true,
   );
 
-  const floorOk = ctx.minTakerAmount === undefined
-    ? true
-    : ctx.order.takerAmount >= ctx.minTakerAmount;
+  const limitsReady =
+    ctx.limitsStatus === undefined || ctx.limitsStatus === "ready";
 
-  const ratioOk = !ctx.maxPriceRatio || ctx.maxPriceRatio === 0n
-    ? true
-    : (ctx.order.makerAmount * 10n ** 18n) / ctx.order.takerAmount <=
-      ctx.maxPriceRatio;
+  const floorOk =
+    limitsReady &&
+    (ctx.minTakerAmount === undefined ||
+      !belowTakerFloor(ctx.order.takerAmount, ctx.minTakerAmount));
+
+  const ratioOk =
+    limitsReady &&
+    (ctx.maxPriceRatio === undefined
+      ? ctx.order.takerAmount > 0n
+      : !exceedsPriceCap(
+          ctx.order.makerAmount,
+          ctx.order.takerAmount,
+          ctx.maxPriceRatio,
+        ));
+
+  const limitsLabel =
+    ctx.limitsStatus === "loading"
+      ? t("trade.signModal.limitsLoading")
+      : ctx.limitsStatus === "error"
+      ? t("trade.signModal.limitsUnavailable")
+      : null;
 
   const selfOk =
     ctx.order.maker.toLowerCase() === ctx.walletAddress.toLowerCase();
 
-  return [
+  const rules: RuleResult[] = [
     {
       id: "domain",
       label: officialDex
@@ -355,19 +421,52 @@ function evaluateRules(
     },
     {
       id: "floor",
-      label: floorOk
-        ? t("trade.signModal.ruleFloorOk")
-        : t("trade.signModal.ruleFloorFail"),
+      label:
+        limitsLabel ??
+        (floorOk
+          ? t("trade.signModal.ruleFloorOk")
+          : t("trade.signModal.ruleFloorFail")),
       ok: floorOk,
+      hard: true,
     },
     {
       id: "ratio",
-      label: ratioOk
-        ? t("trade.signModal.ruleRatioOk")
-        : t("trade.signModal.ruleRatioFail"),
+      label:
+        limitsLabel ??
+        (ratioOk
+          ? t("trade.signModal.ruleRatioOk")
+          : t("trade.signModal.ruleRatioFail")),
       ok: ratioOk,
+      hard: true,
     },
   ];
+
+  // Rule 5 — fat-finger price deviation. Only rendered when a market
+  // reference existed to check against (see SignConfirmContext).
+  if (ctx.priceDeviation !== undefined) {
+    const dev = ctx.priceDeviation;
+    rules.push({
+      id: "deviation",
+      label:
+        dev === null
+          ? t("trade.signModal.ruleDeviationOk")
+          : t(
+              dev.above
+                ? "trade.signModal.ruleDeviationFailAbove"
+                : "trade.signModal.ruleDeviationFailBelow",
+            ).replace("{pct}", String(dev.pct)),
+      ok: dev === null,
+      detail:
+        dev === null
+          ? undefined
+          : t("trade.signModal.ruleDeviationDetail").replace(
+              "{ref}",
+              formatPrice(dev.refPrice),
+            ),
+    });
+  }
+
+  return rules;
 }
 
 function fmt(amount: bigint, decimals: number): string {

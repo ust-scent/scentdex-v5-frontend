@@ -4,15 +4,25 @@ import { useTranslator } from "@/lib/locale-context";
 import { useTokenStatus } from "@/lib/hooks/useTokenStatus";
 import { useOrderFillability } from "@/lib/hooks/useOrderFillability";
 import { useWalletFills, type WalletFill } from "@/lib/hooks/useWalletFills";
+import { SCENTDEX_V5_ABI } from "@/lib/abi";
 import { SCENTDEX_V5_ADDRESS } from "@/lib/contracts";
-import { TOKENS, type Token } from "@/lib/tokens";
+import { hashOrder, type Order } from "@/lib/order";
+import { TOKENS, symbolLabel, type Token } from "@/lib/tokens";
 import { useEffect, useMemo, useState } from "react";
 import {
   formatUnits,
   type Address,
   type Hex,
 } from "viem";
-import { useAccount, useChainId, useSignTypedData } from "wagmi";
+import {
+  useAccount,
+  useChainId,
+  usePublicClient,
+  useReadContracts,
+  useSignTypedData,
+  useSwitchChain,
+  useWriteContract,
+} from "wagmi";
 
 type Tab = "orders" | "history" | "permit2";
 
@@ -24,7 +34,12 @@ type ApiOrder = {
   filledMakerAmount: string;
   filledTakerAmount: string;
   createdAt: number;
-  signature: string;
+  /**
+   * Present only while the row is live on the book. The API withholds the
+   * order + Permit2 signatures for cancelled / expired / filled rows (OC-01).
+   */
+  signature?: string;
+  signatureWithheld?: true;
   order: {
     maker: Address;
     makerToken: Address;
@@ -54,6 +69,12 @@ function useMyOrders(chainId: number) {
     let timer: ReturnType<typeof setTimeout> | null = null;
     const lower = address?.toLowerCase();
 
+    // Loading is a first-paint signal for THIS effect run (mount, wallet /
+    // chain switch, manual refresh) — not a per-poll one. Re-arming it on
+    // every 3s tick made the empty state flap between 読み込み中… and
+    // ありません — a visible flicker across the whole bottom tab.
+    if (lower) setLoading(true);
+
     async function fetchOnce() {
       if (cancelled) return;
       if (!lower) {
@@ -61,10 +82,12 @@ function useMyOrders(chainId: number) {
         setLoading(false);
         return;
       }
-      setLoading(true);
       try {
+        // includeHidden: the maker must see their own keeper-hidden rows
+        // too — a hidden order is still a valid signature they may want to
+        // cancel on-chain. Signatures of non-live rows are never returned.
         const res = await fetch(
-          `/api/orders?chainId=${chainId}`,
+          `/api/orders?chainId=${chainId}&maker=${lower}&includeHidden=true`,
           { cache: "no-store" },
         );
         if (!res.ok) return;
@@ -184,6 +207,8 @@ function MyOrders({
   const fillability = useOrderFillability(
     visible.filter((o) => ACTIVE_STATUSES.has(o.status)),
   );
+  // OC-01: rows cancelled in our DB may still be fillable on-chain.
+  const onchainCancel = useOnchainCancelState(orders);
 
   if (!isConnected) {
     return (
@@ -232,7 +257,12 @@ function MyOrders({
               o={o}
               fillStatus={fillability.status[o.orderHash]}
               cancellable={!historical && ACTIVE_STATUSES.has(o.status)}
-              onChanged={onChanged}
+              offchainOnly={onchainCancel.offchainOnly(o)}
+              onchainCancelled={onchainCancel.state[o.orderHash] === true}
+              onChanged={() => {
+                onchainCancel.refetch();
+                onChanged();
+              }}
             />
           ))}
         </>
@@ -281,11 +311,16 @@ function OrderRow({
   o,
   fillStatus,
   cancellable,
+  offchainOnly,
+  onchainCancelled,
   onChanged,
 }: {
   o: ApiOrder;
   fillStatus: "fillable" | "unfillable" | "unknown" | undefined;
   cancellable: boolean;
+  /** Cancelled in our DB only — the signature is still live on-chain. */
+  offchainOnly: boolean;
+  onchainCancelled: boolean;
   onChanged: () => void;
 }) {
   const t = useTranslator();
@@ -315,15 +350,19 @@ function OrderRow({
             {filledPct.toFixed(0)}%
           </span>
         </div>
-        <div className="text-center flex items-center justify-center gap-1.5">
+        <div className="text-center flex flex-wrap items-center justify-center gap-1.5">
           <StatusBadge status={o.status} />
           {needsApproval ? (
             <ApprovalBadge symbol={sellSymbol} />
           ) : null}
+          {offchainOnly ? <OffchainOnlyBadge /> : null}
+          {onchainCancelled ? <OnchainCancelledBadge /> : null}
         </div>
         <div className="text-right">
           {cancellable ? (
             <CancelButton order={o} onChanged={onChanged} />
+          ) : offchainOnly ? (
+            <OnchainCancelButton order={o} onChanged={onChanged} />
           ) : (
             <span className="text-fg-faint text-[12px]">—</span>
           )}
@@ -343,6 +382,8 @@ function OrderRow({
               {side.toUpperCase()}
             </span>
             {needsApproval ? <ApprovalBadge symbol={sellSymbol} /> : null}
+            {offchainOnly ? <OffchainOnlyBadge /> : null}
+            {onchainCancelled ? <OnchainCancelledBadge /> : null}
           </div>
           <StatusBadge status={o.status} />
         </div>
@@ -365,6 +406,9 @@ function OrderRow({
           </span>
         </div>
         {cancellable ? <CancelButton order={o} onChanged={onChanged} block /> : null}
+        {!cancellable && offchainOnly ? (
+          <OnchainCancelButton order={o} onChanged={onChanged} block />
+        ) : null}
       </div>
     </div>
   );
@@ -378,6 +422,16 @@ const CANCEL_TYPES = {
   ],
 } as const;
 
+/**
+ * Cancel controls for a live order (OC-01).
+ *
+ *  - "Cancel on-chain" (primary): the maker sends `cancelOrder(order)` to
+ *    the DEX. That is the only real cancel — the contract refuses every
+ *    later fill of this signature.
+ *  - "Hide from book only" (secondary): the old free off-chain cancel. It
+ *    only flips our DB row; the signature stays valid on-chain until
+ *    expiry. The label and hint say so plainly.
+ */
 function CancelButton({
   order,
   onChanged,
@@ -392,7 +446,7 @@ function CancelButton({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const onClick = async () => {
+  const hideFromBook = async () => {
     const dexAddress = SCENTDEX_V5_ADDRESS[order.chainId];
     if (!dexAddress) {
       setError(`SCENTDEX V5 not deployed on chain ${order.chainId}`);
@@ -438,20 +492,153 @@ function CancelButton({
     }
   };
 
-  const label = busy || signing ? t("trade.myOrders.cancelling") : t("trade.myOrders.cancel");
+  const hideLabel = busy || signing ? t("trade.myOrders.cancelling") : t("trade.myOrders.hideOnly");
+
+  return (
+    <div className={block ? "w-full flex flex-col gap-1.5" : "inline-flex flex-col items-end gap-1"}>
+      <OnchainCancelButton order={order} onChanged={onChanged} block={block} />
+      <button
+        onClick={hideFromBook}
+        disabled={busy || signing}
+        title={t("trade.myOrders.hideOnlyHint")}
+        className={
+          block
+            ? "w-full py-1.5 rounded-md text-[12px] text-fg-faint hover:text-fg-dim disabled:opacity-60"
+            : "text-[11px] px-1 py-0.5 rounded text-fg-faint hover:text-fg-dim disabled:opacity-60"
+        }
+      >
+        {hideLabel}
+      </button>
+      {block ? (
+        <span className="text-[11px] text-fg-faint leading-snug">
+          {t("trade.myOrders.hideOnlyHint")}
+        </span>
+      ) : null}
+      {error ? (
+        <span className="text-[10px] text-sell mt-1 max-w-[160px] truncate" title={error}>
+          {error}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function toOrderStruct(o: ApiOrder["order"]): Order {
+  return {
+    maker: o.maker,
+    makerToken: o.makerToken,
+    takerToken: o.takerToken,
+    makerAmount: BigInt(o.makerAmount),
+    takerAmount: BigInt(o.takerAmount),
+    expiry: BigInt(o.expiry),
+    nonce: BigInt(o.nonce),
+    salt: o.salt,
+    feeSide: o.feeSide,
+    feeBps: o.feeBps,
+  };
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Sends `cancelOrder(order)` from the maker's wallet, waits for the receipt,
+ * then asks the API to mirror it (the server re-reads `cancelled(hash)` from
+ * the chain itself — no extra signature). Works for live rows and for rows
+ * that were only hidden off-chain earlier.
+ */
+function OnchainCancelButton({
+  order,
+  onChanged,
+  block,
+}: {
+  order: ApiOrder;
+  onChanged: () => void;
+  block?: boolean;
+}) {
+  const t = useTranslator();
+  const { address, chainId: walletChainId } = useAccount();
+  const { switchChainAsync } = useSwitchChain();
+  const { writeContractAsync } = useWriteContract();
+  const publicClient = usePublicClient({ chainId: order.chainId });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const onClick = async () => {
+    const dexAddress = SCENTDEX_V5_ADDRESS[order.chainId];
+    if (!dexAddress) {
+      setError(`SCENTDEX V5 not deployed on chain ${order.chainId}`);
+      return;
+    }
+    if (!address || address.toLowerCase() !== order.order.maker.toLowerCase()) {
+      setError("Only the order's maker wallet can cancel it on-chain");
+      return;
+    }
+    const struct = toOrderStruct(order.order);
+    // Never spend gas cancelling a different hash than the row we show.
+    if (
+      hashOrder(struct, order.chainId, dexAddress).toLowerCase() !==
+      order.orderHash.toLowerCase()
+    ) {
+      setError("Order hash mismatch — not sending");
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    try {
+      if (walletChainId !== order.chainId) {
+        await switchChainAsync({ chainId: order.chainId });
+      }
+      const txHash = await writeContractAsync({
+        chainId: order.chainId,
+        address: dexAddress,
+        abi: SCENTDEX_V5_ABI,
+        functionName: "cancelOrder",
+        args: [struct],
+      });
+      if (!publicClient) throw new Error("No RPC client for this chain");
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+      if (receipt.status !== "success") {
+        throw new Error(`cancelOrder reverted (${txHash.slice(0, 10)}…)`);
+      }
+
+      // Mirror into the off-chain book. The server reads cancelled(hash)
+      // from its own RPC, which can lag a block behind ours — retry briefly.
+      for (let i = 0; i < 6; i++) {
+        const res = await fetch(`/api/orders/${order.orderHash}/cancel`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ onchain: true, chainId: order.chainId }),
+        });
+        if (res.ok) break;
+        if (res.status !== 409 && res.status !== 502) {
+          const j = (await res.json().catch(() => ({}))) as { error?: string };
+          throw new Error(j.error ?? `HTTP ${res.status}`);
+        }
+        await sleep(2000);
+      }
+      onChanged();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg.slice(0, 120));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className={block ? "w-full" : "inline-flex flex-col items-end"}>
       <button
         onClick={onClick}
-        disabled={busy || signing}
+        disabled={busy}
+        title={t("trade.myOrders.cancelOnchainHint")}
         className={
           block
-            ? "w-full py-2 rounded-md bg-white/[0.04] text-[13px] text-fg-dim hover:text-fg hover:bg-white/[0.08] disabled:opacity-60"
-            : "text-[12px] px-2 py-1 rounded text-fg-dim hover:text-fg hover:bg-white/[0.05] disabled:opacity-60"
+            ? "w-full py-2 rounded-md bg-white/[0.06] text-[13px] text-fg hover:bg-white/[0.1] disabled:opacity-60"
+            : "text-[12px] px-2 py-1 rounded bg-white/[0.05] text-fg hover:bg-white/[0.09] disabled:opacity-60 whitespace-nowrap"
         }
       >
-        {label}
+        {busy ? t("trade.myOrders.cancellingOnchain") : t("trade.myOrders.cancelOnchain")}
       </button>
       {error ? (
         <span className="text-[10px] text-sell mt-1 max-w-[160px] truncate" title={error}>
@@ -459,6 +646,82 @@ function CancelButton({
         </span>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * On-chain `cancelled(orderHash)` for the maker's rows that our DB marks
+ * cancelled. `offchainOnly(o)` is true when such a row is still fillable
+ * on-chain: not cancelled there, not past expiry, not fully filled.
+ */
+function useOnchainCancelState(orders: ApiOrder[]) {
+  const targets = useMemo(
+    () =>
+      orders.filter(
+        (o) => o.status === "cancelled" && SCENTDEX_V5_ADDRESS[o.chainId],
+      ),
+    [orders],
+  );
+  const q = useReadContracts({
+    allowFailure: true,
+    contracts: targets.map((o) => ({
+      chainId: o.chainId,
+      address: SCENTDEX_V5_ADDRESS[o.chainId]!,
+      abi: SCENTDEX_V5_ABI,
+      functionName: "cancelled" as const,
+      args: [o.orderHash as Hex] as const,
+    })),
+    query: { enabled: targets.length > 0, refetchInterval: 30_000 },
+  });
+
+  const state = useMemo(() => {
+    const m: Record<string, boolean | undefined> = {};
+    targets.forEach((o, i) => {
+      const r = q.data?.[i];
+      m[o.orderHash] =
+        r && r.status === "success" ? Boolean(r.result) : undefined;
+    });
+    return m;
+  }, [targets, q.data]);
+
+  // eslint-disable-next-line react-hooks/purity
+  const nowSec = Math.floor(Date.now() / 1000);
+  const offchainOnly = (o: ApiOrder) => {
+    if (o.status !== "cancelled") return false;
+    if (state[o.orderHash] !== false) return false; // cancelled on-chain, or unknown
+    const expiry = Number(o.order.expiry);
+    if (expiry > 0 && expiry < nowSec) return false; // signature already dead
+    if (BigInt(o.filledMakerAmount) >= BigInt(o.order.makerAmount)) return false;
+    return true;
+  };
+
+  return {
+    state,
+    offchainOnly,
+    refetch: () => {
+      void q.refetch();
+    },
+  };
+}
+
+function OffchainOnlyBadge() {
+  const t = useTranslator();
+  return (
+    <span
+      title={t("trade.myOrders.onchainNotCancelledTooltip")}
+      className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 whitespace-nowrap"
+    >
+      ⚠ {t("trade.myOrders.onchainNotCancelled")}
+    </span>
+  );
+}
+
+function OnchainCancelledBadge() {
+  const t = useTranslator();
+  return (
+    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.05] text-fg-faint whitespace-nowrap">
+      {t("trade.myOrders.onchainCancelled")}
+    </span>
   );
 }
 
@@ -498,6 +761,7 @@ type HistoryItem =
       amount: number;
       price: number;
       status: "cancelled" | "expired";
+      orderHash: string;
     }
   | {
       kind: "fill";
@@ -514,6 +778,10 @@ function History({ orders, loading }: { orders: ApiOrder[]; loading: boolean }) 
   const t = useTranslator();
   const { isConnected } = useAccount();
   const fills = useWalletFills();
+  const onchainCancel = useOnchainCancelState(orders);
+  const offchainOnlyHashes = new Set(
+    orders.filter((o) => onchainCancel.offchainOnly(o)).map((o) => o.orderHash),
+  );
 
   // Approximate "now" for fill ageSec → unix time conversion. Fills carry
   // ageSec relative to the latest indexed block; subtract from now for a
@@ -545,6 +813,7 @@ function History({ orders, loading }: { orders: ApiOrder[]; loading: boolean }) 
         amount,
         price,
         status: o.status,
+        orderHash: o.orderHash,
       });
     }
 
@@ -620,6 +889,11 @@ function History({ orders, loading }: { orders: ApiOrder[]; loading: boolean }) 
               <div className="text-right tnum">{fmtPrice(it.price)}</div>
               <div className="text-center">
                 <HistoryStatusBadge status={status} />
+                {it.kind === "order" && offchainOnlyHashes.has(it.orderHash) ? (
+                  <div className="mt-1">
+                    <OffchainOnlyBadge />
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -636,6 +910,9 @@ function History({ orders, loading }: { orders: ApiOrder[]; loading: boolean }) 
                     {it.side.toUpperCase()}
                   </span>
                   <HistoryStatusBadge status={status} />
+                  {it.kind === "order" && offchainOnlyHashes.has(it.orderHash) ? (
+                    <OffchainOnlyBadge />
+                  ) : null}
                 </div>
                 <span className="text-[11px] font-mono tnum text-fg-faint">
                   {time}
@@ -706,7 +983,7 @@ function Permit2Card({ token }: { token: Token }) {
           {token.symbol.charAt(0)}
         </div>
         <div className="font-medium text-[14px] flex-1">
-          {token.symbol}
+          {symbolLabel(token.symbol)}
           <div className="text-[11px] text-fg-faint font-normal">
             {token.name}
           </div>
@@ -720,7 +997,7 @@ function Permit2Card({ token }: { token: Token }) {
         </p>
       ) : state === "disconnected" ? (
         <p className="text-[12px] text-fg-dim leading-relaxed">
-          {t("trade.approvedTokens.connectWallet").replace("{symbol}", token.symbol)}
+          {t("trade.approvedTokens.connectWallet").replace("{symbol}", symbolLabel(token.symbol))}
         </p>
       ) : (
         <PermitBody token={token} status={s} />
@@ -771,7 +1048,7 @@ function PermitBody({
     isApproved
       ? t("trade.approvedTokens.approved")
       : t("trade.approvedTokens.statusNotApproved")
-  ).replace("{symbol}", token.symbol);
+  ).replace("{symbol}", symbolLabel(token.symbol));
 
   return (
     <>
@@ -780,7 +1057,7 @@ function PermitBody({
           {t("trade.approvedTokens.balance")}
         </span>
         <span className="font-mono tnum text-fg">
-          {status.balanceLoading ? "…" : balance} {token.symbol}
+          {status.balanceLoading ? "…" : balance} {symbolLabel(token.symbol)}
         </span>
       </div>
 

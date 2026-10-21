@@ -169,16 +169,33 @@ export async function insertOrder(o: StoredOrder): Promise<void> {
 export async function listOrders(filter: {
   pair?: string;
   chainId?: number;
+  /** Maker address (any case). Used by the maker's own "My Orders" view. */
+  maker?: string;
+  /**
+   * When false (default), rows that the keeper-bot has flagged as
+   * unfillable (`keeper_hidden = TRUE`) are filtered out, keeping
+   * the public order book clean. Set to true from admin / debug
+   * surfaces that need to see every row regardless of state.
+   */
+  includeKeeperHidden?: boolean;
 }): Promise<StoredOrder[]> {
   const now = Math.floor(Date.now() / 1000);
+  const includeKeeperHidden = filter.includeKeeperHidden === true;
 
   if (isDbAvailable()) {
     const result = await query<DbOrderRow>(
       `SELECT * FROM orders
         WHERE ($1::text IS NULL OR pair = $1)
           AND ($2::int  IS NULL OR chain_id = $2)
+          AND ($3::bool OR keeper_hidden = FALSE)
+          AND ($4::text IS NULL OR maker = $4)
         ORDER BY created_at DESC`,
-      [filter.pair ?? null, filter.chainId ?? null],
+      [
+        filter.pair ?? null,
+        filter.chainId ?? null,
+        includeKeeperHidden,
+        filter.maker ? filter.maker.toLowerCase() : null,
+      ],
     );
 
     const rows = result?.rows ?? [];
@@ -210,11 +227,17 @@ export async function listOrders(filter: {
     return orders;
   }
 
-  // Memory backend
+  // Memory backend — keeper_hidden lives on DB only; for the memory
+  // fallback (local dev without Postgres) all rows are visible.
   const all = Array.from(memOrders().values());
   return all
     .filter((o) => (filter.pair ? o.pair === filter.pair : true))
     .filter((o) => (filter.chainId ? o.chainId === filter.chainId : true))
+    .filter((o) =>
+      filter.maker
+        ? o.order.maker.toLowerCase() === filter.maker.toLowerCase()
+        : true,
+    )
     .map((o) => {
       if (
         (o.status === "open" || o.status === "partially-filled") &&
@@ -234,6 +257,56 @@ export async function listOrders(filter: {
     .sort((a, b) => b.createdAt - a.createdAt);
 }
 
+// ---------- public (API) view ---------------------------------------------
+
+/**
+ * What GET /api/orders returns for one row.
+ *
+ * OC-01 (2026-10-11 audit): the maker's order signature and Permit2
+ * signature are what a taker submits to `fillOrder`. An off-chain cancel
+ * only flips our DB status — the contract never hears about it — so
+ * handing those signatures out for a cancelled row let anyone fill an
+ * order the maker believed was gone. Signatures are therefore returned
+ * ONLY while the row is live on the book (open / partially-filled and not
+ * past expiry). Every other row — cancelled, expired, filled — comes back
+ * without them, including under `?includeHidden=true`. History views need
+ * the order terms, never the signatures.
+ *
+ * Signatures already served before this change cannot be recalled; the
+ * maker closes that gap with the on-chain `cancelOrder()` the UI offers.
+ */
+export type PublicOrder = Omit<
+  StoredOrder,
+  "signature" | "permitSingle" | "permitSignature"
+> & {
+  signature?: Hex;
+  permitSingle?: SerialisedPermitSingle;
+  permitSignature?: Hex;
+  /** true when the signatures were withheld because the row is not live. */
+  signatureWithheld?: true;
+};
+
+export function isLiveOrder(o: StoredOrder, nowSec: number): boolean {
+  if (o.status !== "open" && o.status !== "partially-filled") return false;
+  const expiry = Number(o.order.expiry);
+  return !(expiry > 0 && expiry < nowSec);
+}
+
+export function toPublicOrder(o: StoredOrder, nowSec: number): PublicOrder {
+  if (isLiveOrder(o, nowSec)) return { ...o };
+  return {
+    orderHash: o.orderHash,
+    order: o.order,
+    status: o.status,
+    filledMakerAmount: o.filledMakerAmount,
+    filledTakerAmount: o.filledTakerAmount,
+    pair: o.pair,
+    chainId: o.chainId,
+    createdAt: o.createdAt,
+    signatureWithheld: true,
+  };
+}
+
 export async function findOrder(orderHash: string): Promise<StoredOrder | null> {
   if (isDbAvailable()) {
     const result = await query<DbOrderRow>(
@@ -246,6 +319,171 @@ export async function findOrder(orderHash: string): Promise<StoredOrder | null> 
   return memOrders().get(orderHash) ?? null;
 }
 
+/** Token/amount shape needed to derive the last traded price of a pair. */
+export type LastTrade = {
+  makerToken: string;
+  takerToken: string;
+  makerAmount: string;
+  takerAmount: string;
+};
+
+/**
+ * The most recently FILLED (or partially-filled) order for a pair — its
+ * unit price is the last traded price. `markFilled` bumps `updated_at` on
+ * every fill, so ordering by it surfaces the latest trade even if it is
+ * older than the 24h on-chain stats window (so the StatsBar price persists
+ * instead of blanking to "—" on a quiet pair).
+ */
+export async function lastTrade(
+  pair: string,
+  chainId: number,
+): Promise<LastTrade | null> {
+  if (isDbAvailable()) {
+    const result = await query<{
+      maker_token: string;
+      taker_token: string;
+      maker_amount: string;
+      taker_amount: string;
+    }>(
+      `SELECT maker_token, taker_token, maker_amount, taker_amount
+         FROM orders
+        WHERE pair = $1 AND chain_id = $2
+          AND status IN ('filled','partially-filled')
+        ORDER BY updated_at DESC
+        LIMIT 1`,
+      [pair, chainId],
+    );
+    const row = result?.rows[0];
+    return row
+      ? {
+          makerToken: row.maker_token,
+          takerToken: row.taker_token,
+          makerAmount: row.maker_amount,
+          takerAmount: row.taker_amount,
+        }
+      : null;
+  }
+  // Memory backend (local dev): no updated_at, approximate by createdAt.
+  const filled = Array.from(memOrders().values())
+    .filter(
+      (o) =>
+        o.pair === pair &&
+        o.chainId === chainId &&
+        (o.status === "filled" || o.status === "partially-filled"),
+    )
+    .sort((a, b) => b.createdAt - a.createdAt);
+  const o = filled[0];
+  return o
+    ? {
+        makerToken: o.order.makerToken,
+        takerToken: o.order.takerToken,
+        makerAmount: o.order.makerAmount,
+        takerAmount: o.order.takerAmount,
+      }
+    : null;
+}
+
+/** One executed fill, as recorded in the append-only `order_events` log. */
+export type TradeRecord = {
+  orderHash: string;
+  /** On-chain tx that carried the OrderFilled log. Null on legacy rows. */
+  txHash: string | null;
+  blockNumber: number | null;
+  /** Unix seconds. Recorded server-side at fill time — not block-estimated. */
+  at: number;
+  makerToken: string;
+  takerToken: string;
+  /** THIS fill's amounts (not the order's cumulative totals). */
+  fillMakerAmount: string;
+  fillTakerAmount: string;
+};
+
+/**
+ * Executed-fill history for a pair, most recent first.
+ *
+ * Reads the `order_events` audit log rather than replaying `OrderFilled` logs
+ * from chain. Three reasons this is the right source for a trade tape:
+ *
+ *  - **Range.** getLogs is chunked at 900 blocks/call, so an on-chain tape
+ *    deep enough to hold 30 fills on a quiet pair costs dozens of RPC round
+ *    trips per refresh. This is one indexed query.
+ *  - **Granularity.** One row per FILL, so a partially-filled order shows up
+ *    as the several trades it actually was — `orders.filled_*_amount` only
+ *    keeps the cumulative total and would collapse them into one.
+ *  - **Tx hash.** `chain_tx_hash` is already recorded, so each trade can link
+ *    straight to the explorer.
+ *
+ * Caveat the caller must handle: this log only sees fills that were reported
+ * back through `POST /api/orders/[hash]/filled` — i.e. fills executed via this
+ * frontend. A fill submitted directly against the contract by an external
+ * client never lands here. Callers should union this with the on-chain event
+ * index (see `useTradeHistory`) so externally-executed trades still appear.
+ *
+ * Rows whose `meta` is missing the per-fill amounts are dropped: without them
+ * there is no way to derive a price, and a trade tape row with a blank price
+ * is worse than an absent one.
+ */
+export async function listTrades(
+  pair: string,
+  chainId: number,
+  limit: number,
+): Promise<TradeRecord[]> {
+  // Clamp server-side so a hand-crafted ?limit=100000 can't turn into an
+  // unbounded scan.
+  const capped = Math.min(Math.max(Math.trunc(limit) || 0, 1), 200);
+  if (!isDbAvailable()) {
+    // Memory backend (local dev): `memEvents` carries neither tx hash nor
+    // per-fill amounts, so there is nothing faithful to return. The on-chain
+    // index is the only tape in local dev.
+    return [];
+  }
+
+  const result = await query<{
+    order_hash: string;
+    chain_tx_hash: string | null;
+    block_number: string | null;
+    at: Date;
+    meta: { fillMakerAmount?: string; fillTakerAmount?: string } | null;
+    maker_token: string;
+    taker_token: string;
+  }>(
+    `SELECT e.order_hash,
+            e.chain_tx_hash,
+            e.block_number,
+            e.at,
+            e.meta,
+            o.maker_token,
+            o.taker_token
+       FROM order_events e
+       JOIN orders o ON o.order_hash = e.order_hash
+      WHERE e.event_type = 'filled'
+        AND o.pair = $1
+        AND o.chain_id = $2
+      ORDER BY e.at DESC, e.id DESC
+      LIMIT $3`,
+    [pair, chainId, capped],
+  );
+
+  const rows = result?.rows ?? [];
+  const trades: TradeRecord[] = [];
+  for (const row of rows) {
+    const fillMakerAmount = row.meta?.fillMakerAmount;
+    const fillTakerAmount = row.meta?.fillTakerAmount;
+    if (!fillMakerAmount || !fillTakerAmount) continue;
+    trades.push({
+      orderHash: row.order_hash,
+      txHash: row.chain_tx_hash,
+      blockNumber: row.block_number === null ? null : Number(row.block_number),
+      at: Math.floor(row.at.getTime() / 1000),
+      makerToken: row.maker_token,
+      takerToken: row.taker_token,
+      fillMakerAmount,
+      fillTakerAmount,
+    });
+  }
+  return trades;
+}
+
 /**
  * Off-chain cancel: marks the order cancelled and records a `cancelled` event.
  * The taker side will see the order disappear on the next /api/orders read.
@@ -254,8 +492,10 @@ export async function findOrder(orderHash: string): Promise<StoredOrder | null> 
  * could in theory submit it on-chain before our indexer marks it cancelled,
  * and the contract would happily fill it (because it doesn't know about our
  * off-chain cancel). For ironclad cancellation the maker must call
- * cancelOrder() on V5 (which costs gas but emits OrderCancelled and prevents
- * any future fill). Surface that affordance in the UI for high-value orders.
+ * cancelOrder() on the DEX (which costs gas but emits OrderCancelled and
+ * prevents any future fill). The My Orders UI offers that as the primary
+ * cancel and labels this off-chain path "hide from book only" (OC-01); GET
+ * /api/orders also stops serving the signatures of cancelled rows.
  */
 export async function cancelOrder(orderHash: string): Promise<boolean> {
   if (isDbAvailable()) {
